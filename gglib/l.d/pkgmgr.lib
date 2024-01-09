@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+
+#-----------------------------------------------------------
+# %1 package name
+# %2 suffix (optional)
+get_latest_package()
+{
+local PKG=$( apt-cache search libgnutls | grep "^$1[0-9].*$2"|sort -V -r|head -1 | cut -f 1 -d ' ')
+  [ -z "$PKG" ] && echo "ERROR: could not locate package $1" >&2 && exit 1
+  echo "$PKG"
+}
+
+#-----------------------------------------------------------
+# %1 package name
+install_latest_dev()
+{
+local PKG=$( get_latest_package "$1" "-dev" )
+
+  echo "installing $PKG..."
+  sudo apt install -y $PKG
+}
+

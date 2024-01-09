@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+
+#set -x
+
+[[ "$0" != "${BASH_SOURCE}" ]] || echo "WARNING: This script should be sourced, NOT run, to take effect"
+
+echo ""
+
+SCRIPT="${BASH_SOURCE}"
+ME=$(basename "$SCRIPT")
+DIR=$(dirname "$SCRIPT")
+DIR="${DIR:-.}"
+DIR=$( readlink -e "$DIR" )
+
+#--------------------------------------------------------------------
+usage()
+{
+  echo ""
+  [ -n "$1" ] && echo "ERROR: $1" && echo ""
+  
+  echo "usage $ME [-a]" >&2
+  echo ""
+  echo "  -a : define aliases for commands, instead of variables only"
+  echo ""
+  exit 99
+  return 0 # Paranoia
+}
+
+
+#--------------------------------------------------------------------
+setup_path_add_path()
+{
+local var=$1
+local dir="${2%/}"
+local orig=""
+
+  [ ! -d "$dir" ] && return 0 # Only add existing directories
+  eval orig=":\${$var}:"  
+  echo "$orig" | fgrep -q ":${dir}:" 2>/dev/null && return 0
+  if [ $orig = "::" ]
+  then
+    eval ${var}="$dir"
+  else
+    eval ${var}="\$$var:$dir"
+  fi
+}
+
+#--------------------------------------------------------------------
+setup_path_define_file()
+{
+local var=$1
+local file="${DIR}/$2"
+
+  [ ! -e "$file" ] && return 0
+  eval export $var="$file"
+}
+
+setup_path_add_paths()
+{
+local VAR=$1    
+local DIR
+
+  shift
+  for DIR in "$@"
+  do
+    setup_path_add_path "$VAR" "$DIR"
+  done
+}
+
+ALIASES=N
+
+while [ "${1:0:1}" = "-" ]
+do
+  OPT="$1"
+  shift
+  case $OPT in
+    -a) ALIASES=Y
+        ;;
+    -h) usage ; exit 99
+	;;
+    *) usage "unknown option $OPT" ; exit 99
+       ;;
+  esac
+done
+
+[ -n "$1" ] && usage "too many arguments" && exit 99
+
+###SETUP###
+
+export LD_LIBRARY_PATH
+
+unset -f setup_path_define_file
+unset -f setup_path_add_path
+unset -f setup_path_add_paths

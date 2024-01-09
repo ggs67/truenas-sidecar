@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+
+gglib_include tty
+
+#-----------------------------------------------------------------------------
+# %1 : status code
+# %2 : line number
+CATCH_LOGFILE=
+
+# %1 logfile
+# %2... command
+catch_log()
+{
+  local DEBUG=N
+  [ "$1" = "-d" ] && DEBUG=Y && shift
+    
+  CATCH_LOGFILE="${LOGDIR}/$1"
+  shift
+  if [ $DEBUG = N ]
+  then
+    ( eval "$@" > "${CATCH_LOGFILE}" 2>&1 )
+  else
+    ( eval "$@" 2>&1 ) | tee "${CATCH_LOGFILE}"
+  fi
+  CATCH_LOGFILE=""  
+}
+
+#-----------------------------------------------------------------------------
+_gglib_catch_error()
+{
+  set +x
+  local STATUS=$1
+  [ "${CATCH_CAUGHT}" = "Y" ] && return 0 # already handeled
+  CATCH_CAUGHT=Y
+  
+  caller
+  
+  if [[ $( caller ) =~ ([0-9]+)[[:space:]]+([^[:space:]].*) ]]
+  then
+    local LINE=${BASH_REMATCH[1]}
+    local FILE=${BASH_REMATCH[2]}
+    local FILEPATH="${FILE}"
+    [ "${FILEPATH:0:1}" != "/" ] && FILEPATH="${RUN_DIR}/${FILEPATH}"
+  else
+    echo "unexpected caller format, could not identify caller"
+    local LINE=$2
+    local FILE="???"
+  fi
+
+
+  L=$LINE
+  L1=$((L-5))
+  L2=$((L+2))
+
+  if [ -n "${CATCH_LOGFILE}" -a -f "${CATCH_LOGFILE}" ]
+  then
+    tail -50 "${CATCH_LOGFILE}"
+    echo ""
+  fi
+  echo "" >&2
+  echo "error code $1 returned on line $LINE in $FILE" >&2
+  if [ "$FILE" != "???" ]
+  then      
+    echo "---------------------------------------------------------------------" >&2
+    sed "$L1,$L2!d;s/^/    /;${L}s/^   /->>/" "$FILEPATH" >&2
+    echo "---------------------------------------------------------------------" >&2
+  fi
+
+  echo "" >&2
+  echo "Call stack:" >&2
+
+  i=0
+  while true
+  do
+    caller $i >/dev/null || break
+    caller $i | awk ' {printf("%s:%s %s()\n",$3,$1,$2);}' >&2
+    i=$((i+1))
+  done
+  
+  exit $1
+}
+
+
+#-----------------------------------------------------------------------------
+Establish()
+{
+  [ -n "${CATCH_CAUGHT}" ] && CATCH_CAUGHT="" 
+  trap '_gglib_catch_error $? $LINENO' ERR
+}
+
+Abolish()
+{
+  trap ERR
+}
+
+#-----------------------------------------------------------------------------
+error()
+{
+  echo "ERROR: $1" >&2
+  exit 1
+}
+
+#-----------------------------------------------------------------------------
+# %1  : message
+# [%2]: wait timeout (n)
+#        - n>0 : wait for n seconds
+#          n<0 : wait for -n seconds, can be forced to continue with RETURN
+#          0   : wait for RETURN
+#          any non digit character : do not wait 
+WARNING_WAIT=-5
+warn()
+{
+  local _wait="${2}"
+  [ -z "$_wait" ] && _wait="${WARNING_WAIT}"
+  echo "WARNING: $1" >&2
+  wait_for_abort ${_wait}
+}
+
+declare -g VERBOSE=${VERBOSE:-0}
+verbose()
+{
+  [ $1 -gt $VERBOSE ] && return 0
+  echo "$2"
+}

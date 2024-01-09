@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+
+#--------------------------------------------------------------------------
+# %1   : function name (for error reporting)
+# %2   : option definition
+# %3...: function arguments
+#
+# option definition:
+#  opt1,opt2,opt3....,optn
+#
+# <short>|<long>:<sep><count>=<id>
+# 11111111111111222222222222233333   <-- parts
+#
+# Optiondefinitions have 3 parts (as depicted above):
+#
+# Part 1: option name (short and/or long) (<short>|<long>) or (<short>) or (<long>)
+#
+#   Each option must have at least a short or long name. If it has both they MUST be
+#   separated by a pipe (|) and the short (one character) option MUST be first
+#   An otion CANNOT have several short or long synonyms. 
+#
+#   Option names are to be given without dash. On the function call short options
+#   are introduced by a single dash (-) while long are with a double dash (--)
+#
+# Part 2: option parameters (optional) (:[[<sep>]<count>]
+#
+#   If the option name is followed by a collon (:) it is expected to have at least one single
+#   argument. An additional argument count MAY be given (default=1). If AND ONLY IF, a count is given
+#   it may be preceeded by an optional separator. The separator CANNOT be ',' or '=' as thios interferes
+#   with other parsing. This only excluds '=' from bein a separator as ',' is th edefault one.
+#
+#   The separator is not applied to the command line as arguments are expected to be separate on the function
+#   call already (i.e. separated by the shell IFS), but it is the separator used in storing the different arguments
+#   in the resulting dictionary.
+#
+#   NOTE: the separator should be a character not expected int the argument value
+#
+# Part 3: identifier (optional)  (=<id>)
+#
+#   The poarsed options are stored in an associative array where each entry has an identifier. Th eidentifier of any
+#   option defaults to its long name, or to its short name if there is no long name. The 3rd part allows to give
+#   an alternative identifier instead.
+#
+# OUTPUT:
+#
+# OPT_ARGS[@] : array of the remaining (unparsed) function arguments. I.e. the first non-option argument entcountered
+#               or after a '--'
+# OPT_PARSED[@] : Associative array indexed by option iodentifier (as described in part 3 above). Th earray only has entries
+#                 for passed options, not for all defined options. For options without parameter, the value is "Y"
+
+parse_func_options()
+{
+local fname="$1"
+local DEFS="$2"
+shift 2
+local OPT
+local DEF
+
+  declare -g -a OPT_ARGS=( "$@" )
+  declare -g -A OPT_PARSED=()
+  
+  while [ "${OPT_ARGS[0]:0:1}" = "-" ]
+  do
+    OPT="${OPT_ARGS[0]}"
+    OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
+
+    [ "$OPT" = "--" ] && break
+    if [ "${OPT:1:1}" = "-" ]
+    then
+     # Long option
+     DEF=$( echo ",${DEFS}," | grep -E -o "[,].[|]${OPT:2}([,]|[:=][^,]*[,])" )
+     # If no match, lets try for option without short option	
+     [ -z "${DEF}" ] && DEF=$( echo ",${DEFS}," | grep -E -o "[,]${OPT:2}([,]|[:=][^,]*[,])" )
+     [ -z "${DEF}" ] && echo "ERROR: unknown option '$OPT' for function ${fname}" && exit 1
+    else
+     # short option
+     [ "${#OPT}" -ne 2 ] && echo "ERROR: illegal short option (too long): $OPT"	&& exit 1
+     DEF=$( echo ",${DEFS}," | grep -E -o "[,]${OPT:1:1}([|][^,:=]+)?([,]|[:=][^,]*[,])" )
+     [ -z "${DEF}" ] && echo "ERROR: unknown option '$OPT' for function ${fname}" && exit 1
+    fi
+    if [[ "$DEF" =~ [,]([0-9a-zA-Z_-|]+)([:][^0-9=]?[0-9]*)?([=][^,]+)?[,] ]]
+    then
+      local SEP=","
+      local NAME="${BASH_REMATCH[1]}"
+      local COUNT="${BASH_REMATCH[2]}"
+      local ID="${BASH_REMATCH[3]}"
+      [ "$COUNT" = ":" ] && COUNT=1 || COUNT="${COUNT:1}"
+      # Has separator ?
+      [[ "$COUNT" =~ ([^-9])([0-9]+) ]] && SEP="${BASH_REMATCH[1]}" && COUNT="${BASH_REMATCH[2]}"
+      [ -z "$COUNT" ] && COUNT=0
+      if [ -n "$ID" ]
+      then
+        ID="${ID:1}" # Remove '='
+      else
+       [[ ! "${NAME}" =~ ([^|]+)([|].+)? ]] && echo "ERROR: invalid option name format '${DEF}' in function ${fname}" && exit 1
+       ID="${BASH_REMATCH[2]}"
+       [ -z "$ID" ] && ID="${BASH_REMATCH[1]}"
+      fi
+      VALUE="Y"
+      if [ $COUNT -eq 1 ]
+      then
+	VALUE="${OPT_ARGS[0]}"
+        [ -z "$VALUE" ] && echo "ERROR: option '$OPT' requires an argument in function ${fname}" >&2 && exit 1
+        OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
+      fi
+      if [ $COUNT -gt 1 ]
+      then
+	local C=$COUNT
+	VALUE=""
+	while [ $C -gt 0 ]
+	do
+          local VAL="${OPT_ARGS[0]}"
+          [ -z "$VAL" ] && echo "ERROR: option '$OPT' requires $COUNT arguments in function ${fname}" >&2 && exit 1
+	  [ -n "$VALUE" ] && VALUE="$VALUE$SEP$VAL" || VALUE="$VAL"
+          OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
+
+	  C=$((C-1))
+	done
+      fi
+      OPT_PARSED[$ID]="$VALUE"
+    else
+      echo "BUG: illegal option definition '${DEF}' in function ${fname}" >&2
+      exit 99
+    fi
+  done
+}
+
+#parse_func_options 'test_func' 'N|new,d|debug:=debug,l:=log,m:=map,F:,v=verbose,c|coord::2' --debug 9 -l test.log -c 10 20 -m test.map -F input.dat -- -non-parsed-option additional.txt
+
+#declare -p | fgrep OPT_

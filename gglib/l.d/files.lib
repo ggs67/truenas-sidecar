@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+#------------------------------------------------------------------
+# %1 : path
+need_directory()
+{
+  [ -d "$1" ] && return 0
+  [ -e "$1" ] && echo "ERROR: file $1 exists, but is not directory" >&2 && exit 1
+  mkdir "$1"  
+}
+
+#------------------------------------------------------------------
+purge_directory()
+{
+local _dir="$1" _x
+local _sub="$2:-2"
+
+  [ -z "${_dir}" ] && echo "WARNING: empty directory path, not purged." && return 1
+  _dir=$( realpath -e "${_dir}" )
+  [ "${_dir}" = "/" ] && echo "WARNING: root directory path, not purged." && return 0
+  [ ! -d "${_dir}" ] && return 0
+  _x="${_dir//[^\/]/}"
+  [ ${#_x} -lt ${_sub} ] && echo "WARNING: directory ${_dir} not at expected minumim depth ${_sub}. not purged" && return 1
+  echo "purging ${_dir}/ in 5 seconds..."
+  sleep 5
+  rm -Rf "${_dir}/*"
+}

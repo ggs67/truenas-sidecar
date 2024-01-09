@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+gglib_include tty
+
+flush_stdin()
+{
+  read -r -t 0.1 -N 10000
+}
+
+#-----------------------------------------------------------------------
+# %1 prompt
+# %2 variable (default is REPLY)
+# %3 default y/n
+# %4 timeout
+yes_no()
+{
+local _opt=""
+local _ans=""
+local _var="$2:-REPLY"
+local _def="${3:0:1^}"
+local _p="(y/n)"
+
+  [ $4 -gt 0 ] && _opt="-t $4"
+  [[ "${_def}" =~ [YN] ]] || _def=""
+  
+  if [ -n "${_def}" ]
+  then
+    [ $_def = Y ] && _p="([y]/n)"
+    [ $_def = N ] && _p="(y/[n])"
+  fi
+     
+  while [[ "${_ans}" =~ [^ynYN] ]]
+  do
+    read -p "$1 ${_p}" ${_opt} -n 1 _ans
+    [ -z "${_ans}" ] && _ans="${_def}"
+  done
+  declare -g ${_var}=${_ans^}
+}
+
+#-----------------------------------------------------------------------
+# %1 : n - wait time definition
+#        - n>0 : wait for n seconds
+#          n<0 : wait for -n seconds, can be forced to continue with RETURN
+#          0   : wait for RETURN
+#          any non digit character : do not wait
+#      default: 0
+wait_for_abort()
+{
+local _wait="${1}"
+  [ -z "$_wait" ] && _wait=0
+  [[ "${_wait}" =~ ^([-]?)([0-9]+) ]] || return 0 # no-wait
+  _wait=${BASH_REMATCH[2]}
+  local _ret=N
+  [ "${BASH_REMATCH[1]}" = "-" ] && _ret=Y
+  if [ $_wait -gt 0 ]
+  then
+    echo "   ${TTY_COLOR_GREEN}   >>> You have ${_wait} seconds to cancel via CTRL/C <<<${TTY_NORMAL}"
+    if [ $_ret = Y ]
+    then
+      flush_stdin
+      read -s -p "   ${TTY_COLOR_GREEN}>>> You may hit RETURN to continue before above timeout <<<${TTY_NORMAL}" -t ${_wait}
+    else
+      sleep ${_wait}
+    fi
+  else
+    flush_stdin
+    read -s -p "   ${TTY_COLOR_GREEN}>>> HIT RETURN TO CONTINUE or CTR/C TO ABORT<<<${TTY_NORMAL}"
+  fi
+}

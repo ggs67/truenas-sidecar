@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+gglib_include errmgr
+
+# NOTES: - as list we understand a string of words delimited by a separator
+#        - a word is in this concept, any sequence of characters not containing the delimiter
+
+GGLIB_DEFAULT_LIST_SEP=","
+
+#--------------------------------------------------------------------
+# %1 : list
+# %2 : word to be found
+# %3 : sep (optional)
+# return:
+#   0 if found
+#   1 otherwise
+list_contains()
+{
+local _sep=${3:-${GGLIB_DEFAULT_LIST_SEP}}
+  ( echo "${_sep}$1${_sep}" | grep -F -q "${_sep}$2${_sep}" 2>/dev/null ) && return 0
+  return 1
+}
+
+#--------------------------------------------------------------------
+# %1 : list
+# %2 : word
+# %3 : var (for index)
+# %4 : sep (optional)
+index_of()
+{
+local _sep=${4:-${GGLIB_DEFAULT_LIST_SEP}}
+  list_contains "$1" "$2" "$4" || error "list does not contain word '$2'"
+
+  eval $3=$( awk -F "${_sep}" -v s="$2" '{for(i=1;i<=NF;i++)if($i==s){print i-1;exit;}}{print "unknown"}' <<<$1 )
+}
+
+#--------------------------------------------------------------------
+# %1 : list
+# %2 : word1
+# %3 : word2
+# %4 : sep (optional)
+#
+
+
+# Return:
+#   0: wrord1 is before word2
+#   1: wrord1 is not before word2
+list_item_before()
+{
+local _i1 _i2
+  index_of "$1" "$2" "_i1" "$4"
+  index_of "$1" "$3" "_i2" "$4"
+
+  [ ${_i1} -lt ${_i2} ]
+}
+
+# Return:
+#   0: wrord1 is after word2
+#   1: wrord1 is not after word2
+list_item_after()
+{
+local _i1 _i2
+  index_of "$1" "$2" "_i1" "$4"
+  index_of "$1" "$3" "_i2" "$4"
+
+  [ ${_i1} -gt ${_i2} ]
+}
+
+#   0: wrord1 is before word2 or is word2
+#   1: otherwise
+list_item_until()
+{
+local _i1 _i2
+  index_of "$1" "$2" "_i1" "$4"
+  index_of "$1" "$3" "_i2" "$4"
+
+  [ ${_i1} -le ${_i2} ]
+}
+
+#   0: wrord1 is after word2 or is word2
+#   1: otherwise
+list_item_since()
+{
+local _i1 _i2
+  index_of "$1" "$2" "_i1" "$4"
+  index_of "$1" "$3" "_i2" "$4"
+
+  [ ${_i1} -ge ${_i2} ]
+}

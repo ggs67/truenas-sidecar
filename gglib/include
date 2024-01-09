@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+(return 0 2>/dev/null) || echo "GGLIB include MUST BE SOURCED !!!!!"
+
+declare -g GGLIB_DIR=$( dirname  "${BASH_SOURCE[0]}" )
+[ -z "$GGLIB_DIR" ] && echo "gglib include should be sourced using path" >&2 && exit 1
+GGLIB_DIR=$( realpath -e "${GGLIB_DIR}" )
+
+[ -z "${GGLIB_INCLUDED}" ] && declare -g GGLIB_INCLUDED=""
+
+gglib_include()
+{
+  ( echo " ${GGLIB_INCLUDED} " | grep -F -q " $1 " 2>/dev/null ) && return 0 # already included
+  echo "  including library $1..."
+  GGLIB_INCLUDED="${GGLIB_INCLUDED} $1"
+  source "${GGLIB_DIR}/l.d/$1.lib"
+}
+
+while read _gglib
+do
+  _gglibname=$( basename "$_gglib" ) 
+  _gglibname="${_gglibname%.lib}"
+  [ "$1" = "all" ] && gglib_include "${_gglibname}"
+  ( echo " $* " | grep -F -q " ${_gglibname} " 2>/dev/null ) && gglib_include "${_gglibname}"  
+done < <( find "${GGLIB_DIR}/l.d" -maxdepth 1 -name "*.lib" )
+
+unset _gglib
+unset _gglibname    

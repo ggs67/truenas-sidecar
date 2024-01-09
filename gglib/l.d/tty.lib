@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+TTY_COLOR_BLACK=$(tput setaf 0)
+TTY_COLOR_RED=$(tput setaf 1)
+TTY_COLOR_GREEN=$(tput setaf 2)
+TTY_COLOR_YELLOW=$(tput setaf 3)
+TTY_COLOR_BLUE=$(tput setaf 4)
+TTY_COLOR_MAGENTA=$(tput setaf 5)
+TTY_COLOR_CYAN=$(tput setaf 6)
+TTY_COLOR_WHITE=$(tput setaf 7)
+TTY_NORMAL=$(tput sgr0)
+
+get_terminal_size()
+{
+  declare -g TTY_COLUMNS=$(tput cols)
+  declare -g TTY_LINES=$(tput lines)
+}
+

@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+
+gglib_include tty
+
+_title() 
+{
+local tl="${1:0:1}" t="${1:1:1}" tr="${1:2:1}" l="${1:3:1}" r="${1:4:1}" bl="${1:5:1}" b="${1:6:1}" br="${1:7:1}"
+shift
+
+  get_terminal_size
+  local _w=$((TTY_COLUMNS-1))    
+  local _l1=$( printf "${tl}%$((_w-2))s${tr}" | tr ' ' "$t")
+  local _l2=$( printf "${bl}%$((_w-2))s${br}" | tr ' ' "$b")
+
+  echo ""
+  echo "${_l1}"
+  while [ ${#@} -gt 0 ]
+  do
+    local _t="$1"
+    shift
+    local _tl=${#_t}
+    local _left=$(( (_w-_tl-2)/2 ))
+    local _right=$((_w-_left-_tl-2))
+    printf "%s%${_left}s%s%${_right}s%s\n" "$l" "" "$_t" "" "$r"
+  done
+  echo "${_l2}"
+  echo ""
+}
+
+title1()
+{
+  _title "########" "$@"
+}
+
+alias title=title1
+
+title2()
+{
+  _title "#=#[]#=#" "$@"
+}
+
+title3()
+{
+  _title "+-+||+-+" "$@"
+}
+
+#--------------------------------------------------------------
+_heading()
+{
+local _t="$2"
+local _fmt="${_t:0:1}"  
+local _len=${#_t}
+local _indent=""
+
+  if [[ "${_fmt}" =~ [\<\>^] ]]
+  then
+    get_terminal_size
+    _t="${_t:1}"
+    _len=$((_len-1))
+    _indent=0
+    [ "${_fmt}" = ">" ] && _indent=$((TTY_COLUMNS-1-_len))
+    [ "${_fmt}" = "^" ] && _indent=$(((TTY_COLUMNS-1-_len)/2))
+    _indent=$( printf "%${_indent}s" )
+  fi
+
+  local _l=$( printf "%${_len}s" | tr ' ' "$1")
+
+  echo ""
+  echo "${_indent}$_t"
+  echo "${_indent}$_l"
+  echo ""
+}
+
+heading1()
+{
+  _heading "#" "$@"
+}
+
+heading2()
+{
+  _heading "=" "$@"
+}
+
+heading3()
+{
+  _heading "-" "$@"
+}
+
+heading4()
+{
+  _heading "." "$@"
+}
+
+
