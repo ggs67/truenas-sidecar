@@ -352,15 +352,17 @@ check_array_size_W()
  # %4 : warning wait delay
 _check_absolute_path()
 {
+local _lvl="$1"
+shift
 local _p
 local _opt
 
-  lazy_flags _opt "$2" && shift
-  eval _p=\"\$$2\"
+  lazy_flags _opt "$1" && shift
+  eval _p=\"\$$1\"
   lazy_flags -o "${_opt}" && [ -z "${_p}" ] && return 0 # empty ok (optional)
   
   [ "${_p:0:1}" = "/" ] && return 0
-  _report_check "$1" "$3" "variable $2 does not contain absolute path" "$4"
+  _report_check "${_lvl}" "$2" "variable $2 does not contain absolute path" "$3"
 }
 
  # %1 : var
