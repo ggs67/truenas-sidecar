@@ -32,7 +32,11 @@ title1()
   _title "########" "$@"
 }
 
-alias title=title1
+title()
+{
+  title1 "$@"
+}
+
 
 title2()
 {

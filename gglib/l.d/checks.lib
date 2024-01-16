@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-gglib_include tty
+gglib_include tty funcopts
 
 GGLIB_DEFAULT_CHECK_WARN_TMO=0
 
@@ -57,6 +57,108 @@ check_var_W()
   _check_var W "$1" "$2" "$3"
 }
 
+#-------------------------------------------------------------
+ # %1 : level
+ # %2 : var
+ # %3 : message (optional)
+ # %4 : warning wait delay
+_check_integer()
+{
+local _v
+  eval _v=\"\$$2\"
+  [[ "$_v" =~ ^[-]?[0-9]+$ ]] && return 0 
+  _report_check "$1" "$3" "variable $2 expected to be an integer (value=${_v})" "$4"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_integer()
+{
+  _check_integer E "$1" "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_integer_B()
+{
+  _check_integer B "$1" "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+ # %3 : [wait timeout]
+check_integer_W()
+{
+  _check_integer W "$1" "$2" "$3"
+}
+
+#-------------------------------------------------------------
+# %1 : level
+# %2 : var
+# %3 : min
+# %4 : max (empty is no max)
+# %5 : message (optional)
+# %6 : warning wait delay
+_check_int_range()
+{
+local _v
+  _check_integer "$1" "$2" "$5" "$6"
+  eval _v=\$$2\
+  [ $_v -ge $3 ] && return 0
+  [ -z "$4" ] && return 0
+  [ $_v -le $4 ] && return 0
+  _report_check "$1" "$5" "variable $2 expected to be an integer $3-$4 (value=${_v})" "$6"
+}
+
+check_int_range()
+{
+  _check_integer E "$1" "$2" "3" "$4" "$5"
+}
+
+check_int_range_B()
+{
+  _check_int_range B "$1" "$2" "3" "$4" "$5"
+}
+
+check_int_range_W()
+{
+  _check_int_range W "$1" "$2" "3" "$4" "$5" "$6"
+}
+
+#-------------------------------------------------------------
+ # %1 : level
+ # %2 : var
+ # %3 : message (optional)
+ # %4 : warning wait delay
+_check_yes_no()
+{
+local _val
+   eval  _val=\"\$$2\"
+   [[ "${_val}" =~ [YN] ]] && return 0
+  _report_check "$1" "$3" "variable $2 expected to have a yes/no value, ie. uppercase 'Y' or 'N' (value=${_val})" "$4"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_yes_no()
+{
+  _check_yes_no E "$1" "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_yes_no_B()
+{
+  _check_yes_no B "$1" "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+ # %3 : [wait timeout]
+check_yes_no_W()
+{
+  _check_yes_no W "$1" "$2" "$3"
+}
 
 #-------------------------------------------------------------
 _check_equal_vars()
@@ -243,4 +345,84 @@ check_array_size_W()
   _check_array_size W "$1" "$2" "$3" "$4" "$5"
 }
 
-   
+#-------------------------------------------------------------
+ # %1 : level
+ # %2 : var
+ # %3 : message (optional)
+ # %4 : warning wait delay
+_check_absolute_path()
+{
+local _p
+local _opt
+
+  lazy_flags _opt "$2" && shift
+  eval _p=\"\$$2\"
+  lazy_flags -o "${_opt}" && [ -z "${_p}" ] && return 0 # empty ok (optional)
+  
+  [ "${_p:0:1}" = "/" ] && return 0
+  _report_check "$1" "$3" "variable $2 does not contain absolute path" "$4"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_absolute_path()
+{
+  _check_absolute_path E "$@"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_absolute_path_B()
+{
+  _check_absolute_path B "$@"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+ # %3 : [wait timeout]
+check_absolute_path_W()
+{
+  _check_absolute_path W "$@"
+}
+
+#-------------------------------------------------------------
+ # %1 : level
+ # %2 : check to be executed per element
+ # %3 : array variable
+ # %2.. check parameters, except first which will be variable
+_check_array()
+{
+local _l="$1"
+local _chk="$2"
+local _v="$3"
+local _el
+local _n
+local _i=0
+  shift 3
+  local _args=( "$@" )
+  
+  eval _n=\$\{\#${_v}\[\@\]\}
+  while [ $_i -lt $_n ]
+  do
+    _el="${_v}[${_i}]"
+    eval ${_chk} ${_el} "$@"
+    _i=$((_i+1))
+  done  
+}
+
+check_array()
+{
+  _check_array E "$@"
+}
+
+check_array_B()
+{
+  _check_array B "$@"
+}
+
+check_array_W()
+{
+  _check_array W "$@"
+}
+
+

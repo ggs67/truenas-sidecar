@@ -119,6 +119,33 @@ Note that Debian may not install sudo by default, in which case manual installat
 After this you run the `prepare_environment.sh` script. This is only required once at first installation or update of the scripts. This script will install the required scripts.
 
 In addition it will check the availability of required commands and suggest additional packages if missing. In that case you may re-run this script after the installation in order to make sure all tests have been done.
+
+## Deployment process
+### General process
+Once the  package build it can be installed in the local staging area, which should be the exact same path than on the destination NAS. During deployment all files in the staging area are copied to the destination NAS deployment directory (TRUENAS_DST)
+
+### Detailed deployment steps
+#### Library gathering
+While the local development system does install all required libraries before building a package, these libraries may not be available on the destination NAS, and cannot be installed through normal process.
+
+The deployment process first builds a list of all shared libraries used by all binaries in the staging area. Then it checks the TRUENAS installation for libraries from this list that are available on the NAS and eliminates those from the list. The remaining libraries are then copied from the local system area top the staging area for deployment.
+
+The setup_path.sh script deployed as well, creates an LD_LIBRARY_PATH variable pointing to all library directories in the sidecar for binaries to find those libraries.
+
+#### make_setup_path.sh
+The next step is to generate the setup_path.sh file which is to be deployed in order for users to have an easy way to setup correct paths for the sidecar.
+
+This script is not static but requires some adjustments to fit the environment. For example system library folders are translated relative to the sidecar folder.
+
+Next builders can offer an optional callback function, called to register additional commands.  
+
+#### Backup of the existing sidecar
+The next step being very delicate it is highly recommended to backup the previous installation prior to the actual deployment. The deployment script offers this service (which can be configured) as well.
+
+#### Three-way syncing of configuration filers
+
+#### Deployment
+
 ## Configuration
 
 The next step is to edit  the configuration file config.sh which is sourced by other scripts. This file is divided in 3 parts.

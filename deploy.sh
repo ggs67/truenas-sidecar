@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#set -x
+set -x
 
 SCRIPT="$0"
 ME=$(basename "$SCRIPT")
@@ -11,12 +11,21 @@ DIR=$( readlink -e "$DIR" )
 cd "$DIR" || exit 99
 . ${DIR}/conf.d/config.sh || exit 99
 
+# Check for valid config
+check_absolute_path TRUENAS_DST
+check_absolute_path LOCAL_DST
+
 SRC="${LOCAL_DST}"
 URI="root@$NAS"
 
 DIST="${DIR}/distribute.d"
 
 SEP=":"
+
+source ${DIR}/gglib/include errmgr
+Establish
+
+gglib_include present checks files
 
 #-----------------------------------------------------------------------------
 require()
@@ -162,36 +171,6 @@ usage()
     return 0 # Paranoia allowing for && capture
 }
 
-#-----------------------------------------------------------------------------
-# %1 : status code
-# %2 : line number
-catch()
-{
-    L=$2
-    L1=$((L-5))
-    L2=$((L+2))
-
-    echo "" >&2
-    echo "error code $1 returned on line $2" >&2
-    echo "---------------------------------------------------------------------"
-    sed "$L1,$L2!d;s/^/    /;${L}s/^   /->>/" "$SCRIPT" >&2
-    echo "---------------------------------------------------------------------" >&2
-    exit $1
-}
-
-#-----------------------------------------------------------------------------
-Establish()
-{    
-  trap 'catch $? $LINENO' ERR
-}
-
-Abolish()
-{
-  trap ERR
-}
-
-Establish
-
 while [ "${1:0:1}" = "-" ]
 do
     OPT="$1"
@@ -278,7 +257,19 @@ done < <(find "$DIR/builders.d" -maxdepth 1 -name "build_*.sh" | sort)
 [ -z "${TRUENAS_DST}" ] && echo "DANGEROUS ERROR - TRUENAS_DST is empty. Aborting..." && exit 1
 [ -z "${SRC}" ] && echo "DANGEROUS ERROR - SRC is empty. Aborting..." && exit 1
 
-set -x
+if [ "${TRUENAS_BACKUP}" = "Y" ]
+then
+  alias -p
+  title1 "NAS deployment backup"
+
+  [ -z "${TRUENAS_BACKUP_DIR}" ] && TRUENAS_BACKUP_DIR=$( dirname "${TRUENAS_DST}" )
+  
+  check_var TRUENAS_BACKUP_DIR
+  check_absolute_path TRUENAS_BACKUP_DIR
+  check_var TRUENAS_BACKUP_VERSIONS
+  ssh ${URI} $( remote_file_version ${TRUENAS_BACKUP_VERSIONS} "${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2" )
+  ssh ${URI} tar cfj "${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2" "${TRUENAS_DST}/"
+fi
 
 # rsync:
 # -a -> -rlptgoD

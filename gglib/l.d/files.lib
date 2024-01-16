@@ -25,3 +25,46 @@ local _sub="$2:-2"
   sleep 5
   rm -Rf "${_dir}/*"
 }
+
+#------------------------------------------------------------------
+# %1 : version count
+# %2 : file path
+file_version()
+{
+local _n=$1
+local _i=${_n} _ii=$((_n+1))  
+local _f="$2"
+
+  while [ $_ii -gt 0 ]
+  do
+    _ii=${_i} ; _i=$((_i-1))
+    local _pv="${_f}.${_i}"
+    [ ${_i} -eq 0 ] && _pv="${_f}"
+    local _nv="${_f}.${_ii}"
+  done
+}
+
+#------------------------------------------------------------------
+# %1 : version count
+# %2 : file path
+#
+# This function returns a string on stdout which can be used to do remote versioning via sh
+# Note that it behaves a liitle different from the local version (
+remote_file_version()
+{
+local _n=$1
+local _i=${_n} _ii=$((_n+1))  
+local _f="$2"
+local _cmd=""
+
+  while [ $_ii -gt 1 ]
+  do
+    _ii=${_i} ; _i=$((_i-1))
+    local _pv="${_f}.${_i}"
+    [ ${_i} -eq 0 ] && _pv="${_f}"
+    local _nv="${_f}.${_ii}"
+    [ -n "${_cmd}" ] && _cmd="${_cmd} ; "
+    _cmd="${_cmd}mv -f ${_pv} ${_nv}"
+  done
+  echo "${_cmd}"
+}

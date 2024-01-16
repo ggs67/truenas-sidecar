@@ -10,10 +10,15 @@ GGLIB_DIR=$( realpath -e "${GGLIB_DIR}" )
 
 gglib_include()
 {
-  ( echo " ${GGLIB_INCLUDED} " | grep -F -q " $1 " 2>/dev/null ) && return 0 # already included
-  echo "  including library $1..."
-  GGLIB_INCLUDED="${GGLIB_INCLUDED} $1"
-  source "${GGLIB_DIR}/l.d/$1.lib"
+  while [ -n "$1" ]
+  do
+    local _lib="$1"
+    shift
+    ( echo " ${GGLIB_INCLUDED} " | grep -F -q " ${_lib} " 2>/dev/null ) && continue # already included
+    echo "  including library $_lib..."
+    GGLIB_INCLUDED="${GGLIB_INCLUDED} ${_lib}"
+    source "${GGLIB_DIR}/l.d/${_lib}.lib"
+  done
 }
 
 while read _gglib

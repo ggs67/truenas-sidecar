@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 
 #--------------------------------------------------------------------------
+# %1 : flag (-flag)|var
+#       if %1 is not flag (io.e not start with '-') -> store %2 to variable named by %1
+#       if it is a flag string (i.e. start with '-') and return 0
+#       returns 1 and <var>="" if not an option string
+#
+#       if sinche chaaracter tests for present and return status accordingly
+# %2 : argv[1]
+lazy_flags()
+{
+  if [ ${1:0:1} != "-" ]
+  then
+    [ "${2:0:1}" = "-" ] && eval $1=\"${2:1}\" && return 0
+    eval $1=\"\"
+    return 1
+  else
+    [[ "$2" =~ [${1:1:1}] ]] && return 0
+    return 1
+  fi
+}
+
+
+#--------------------------------------------------------------------------
 # %1   : function name (for error reporting)
 # %2   : option definition
 # %3...: function arguments
