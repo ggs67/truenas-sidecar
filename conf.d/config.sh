@@ -52,17 +52,48 @@ TRUENAS_BACKUP_VERSIONS=5
 # avoid to overwrite existing config files however.
 #
 # In theory 3 scenarios may occur:
-#   - the config files are overwritten each time
-#   - existing config files are never overwritten
-#   - existing config files are only not overwritten if they are
-#     newer than the binary
+#   1. the config files are overwritten each time
+#   2. existing config files are never overwritten
+#   3. existing config files are only not overwritten if they are
+#      newer than the binary
 #
+# The following settings allow control over how the deply script will handle these
+# situations:
+
+# DEPLOY_CONFIG_KEEP must be Y for the script to attempt saving  any config files
 DEPLOY_CONFIG_KEEP=Y
 #-> check_yes_no
+
+# This setting increases the probably to keep configuration files safe (in scenarios 1&3),
+# while  having the side effect of updating the concerned files creation time to the current
+# time.
+#
+# This way synchronization 
 DEPLOY_CONFIG_TOUCH=N
 #-> check_yes_no
-DEPLOY_CONFIG_REVERSE_SYNC=Y
+
+# By default config syncing is done by checking which files have been changed since last
+# deployment. This does however only work if the config file in the staging (local) area
+# has not been altered since last deployment  (either scenario 2 or deploy.sh in save-config
+# mode before any new build is staged)
+#
+# Dual sync can be used to reduce the overwriting probability of config files. The primary sync
+# copies files on the NAS modified after the file in the staging area to the distribute.d
+#
+# The secondary (dual) sync then additionally forces syncs of any file existing in the distribute.d
+# directory.
+#
+# The idea behind this is that any file once detected as config file, will always remain a
+# config file
+DEPLOY_CONFIG_DUAL_SYNC=Y
 #-> check_yes_no
+
+# DEPLOY_CONFIG_CLEANUP controls how config files deleted on the NAS but present in the
+# config vault are handled. 
+DEPLOY_CONFIG_CLEANUP=Y
+
+# List of known config directories
+DEPLOY_CONFIG_DIRS=( "/etc" "/usr/local/etc" )
 
 #-----------------------------------------------------------------------------
 

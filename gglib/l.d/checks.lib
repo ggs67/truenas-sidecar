@@ -112,17 +112,17 @@ local _v
 
 check_int_range()
 {
-  _check_integer E "$1" "$2" "3" "$4" "$5"
+  _check_int_range E "$1" "$2" "$3" "$4"
 }
 
 check_int_range_B()
 {
-  _check_int_range B "$1" "$2" "3" "$4" "$5"
+  _check_int_range B "$1" "$2" "$3" "$4"
 }
 
 check_int_range_W()
 {
-  _check_int_range W "$1" "$2" "3" "$4" "$5" "$6"
+  _check_int_range W "$1" "$2" "$3" "$4" "$5"
 }
 
 #-------------------------------------------------------------

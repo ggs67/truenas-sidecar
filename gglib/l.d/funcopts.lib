@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+LAZY_FLAGS_SETUP="local _opt=\"\" ; lazy_flags _opt \"\$1\" && shift"
+
 #--------------------------------------------------------------------------
 # %1 : flag (-flag)|var
 #       if %1 is not flag (io.e not start with '-') -> store %2 to variable named by %1

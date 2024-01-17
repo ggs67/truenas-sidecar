@@ -10,8 +10,8 @@ check_config()
 {
   check_array check_absolute_path BINDIRS
   check_value_in DEFAULT_BUILD_PHASE "prepare,config,build,install"
+  check_yes_no DEPLOY_CONFIG_DUAL_SYNC
   check_yes_no DEPLOY_CONFIG_KEEP
-  check_yes_no DEPLOY_CONFIG_REVERSE_SYNC
   check_yes_no DEPLOY_CONFIG_TOUCH
   check_array check_absolute_path LIBDIRS
   check_absolute_path LOCAL_DST

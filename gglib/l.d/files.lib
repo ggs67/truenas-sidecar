@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 
+gglib_include funcopts
+
 #------------------------------------------------------------------
 # %1 : path
 need_directory()
 {
+local _mdo=""
+  
+  eval ${LAZY_FLAGS_SETUP}
+  lazy_flags "-p" "${_opt}" && _mdo="-p"
+  
   [ -d "$1" ] && return 0
   [ -e "$1" ] && echo "ERROR: file $1 exists, but is not directory" >&2 && exit 1
-  mkdir "$1"  
+  mkdir ${_mdo} "$1"  
 }
 
 #------------------------------------------------------------------

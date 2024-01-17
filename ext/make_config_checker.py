@@ -114,6 +114,7 @@ class TChecker:
       checks=list(map(str.strip, checks))
     self.Checks=checks
     self.fromCfg=inCFG
+    self.Confirmed=inCFG # If from config, then it is also confirmed
 
   def Update(self, check, inCFG=False):
     if check is None: return False
@@ -126,6 +127,7 @@ class TChecker:
     if self.Checks is None: self.Checks=[]
     self.Checks.append(check)
     self.fromCfg=inCFG
+    if inCFG: self.Confirmed=True
     return True
 
   #----------------------------------------------------------------------------
@@ -209,9 +211,14 @@ class TConfigScript:
     self.LoadDB()
 
     self._parseConfig()
+    self._cleanupDB() # Remove orphan entries from DB
     self.SaveDB()
     self._generateScript(asFunc)
     print(f"config checker '{str(self._checker)}' generated")
+
+  #----------------------------------------------------------------------------
+  def _cleanupDB(self):
+    self._checks = { k:c for k,c in self._checks.items() if c.Confirmed }
 
   #----------------------------------------------------------------------------
   def _generateScript(self, asFunc:bool):
@@ -288,9 +295,10 @@ class TConfigScript:
 
       return self._lastVardef.Update(check,True)
     if var in self._checks:
+      self._checks[var].Confirmer=True
       self._checks[var].Update(check, True)
     else:
-      self._checks[var] = TChecker(var, val, check)
+      self._checks[var] = TChecker(var, val, check, True)
     self._lastVardef = self._checks[var] # Remember for out-of-line check definition
 
 ###############################################################################

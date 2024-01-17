@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -x
+#set -x
 
 SCRIPT="$0"
 ME=$(basename "$SCRIPT")
@@ -8,22 +8,18 @@ DIR=$(dirname "$SCRIPT")
 DIR="${DIR:-.}"
 DIR=$( readlink -e "$DIR" )
 
-cd "$DIR" || exit 99
-. ${DIR}/conf.d/config.sh || exit 99
+source ${DIR}/gglib/include errmgr
+Establish
 
-# Check for valid config
-check_absolute_path TRUENAS_DST
-check_absolute_path LOCAL_DST
+cd "$DIR" || exit 99
+source ${DIR}/ext/load_config.sh || exit 99
 
 SRC="${LOCAL_DST}"
 URI="root@$NAS"
 
-DIST="${DIR}/distribute.d"
+VAULT="${DIR}/config_vault.d"
 
 SEP=":"
-
-source ${DIR}/gglib/include errmgr
-Establish
 
 gglib_include present checks files
 
@@ -165,111 +161,127 @@ local LIBINSTDIR="$2" # is ${SRC}/${ROOT} (actually without / as $ROOT has a lea
 usage()
 {
     echo "" >&2
-    echo "usage: ${ME}" >&2
+    echo "usage: ${ME} [-s|--save-config]" >&2
+    echo "" >&2
+    echo "  -s : only save config and exit" >&2
     echo "" >&2
     exit 99
     return 0 # Paranoia allowing for && capture
 }
+
+SAVE_CONFIG_MODE=N
 
 while [ "${1:0:1}" = "-" ]
 do
     OPT="$1"
     shift
     case $OPT in
-	-h|--help) usage
-		   exit 0
-		   ;;
-	*) echo "error: unknown option $OPT"
-	   usage
-	   exit 99
+      -h|--help) usage
+	         exit 0
+		 ;;
+      -s|--save-config)
+           SAVE_CONFIG_MODE=Y
+           ;;
+      *) echo "error: unknown option $OPT"
+         usage
+         exit 99
     esac
 done
 
-echo "Collecting libraries..."
-LIBS=( $( collect_libs ) )
-LIBSP=()  # local lib paths
-
-echo "Getting TRUENAS available libraries..."
-#ssh $URI for DIR in $LIBDIR ; do find \$DIR -type f 
-
-# Find local library paths
-for LIB in "${LIBS[@]}"
-do
-  FOUND=N
-  for LD in "${LIBDIRS[@]}"
-  do
-    [ ! -d "$LD" ] && continue
-    P="$( find -L "$LD" -name "${LIB}" -type f | head -1 )"
-    if [ -n "$P" ]
-    then
-      # Check for remote path
-      RP="$( ssh $URI for LD in "${LIBDIRS[@]}" \; do [ -d "\$LD" ] \&\& find -L "\$LD" -name "${LIB}" -type f \; done | head -1 )"
-      LIBSP+=( "${LD}${SEP}${LIB}${SEP}${P}${SEP}${RP}" ) && FOUND=Y && break
-    fi
-    
-  done
-  if [ $FOUND != Y ]
-  then
-    # Try to find in destination (packlage lib)
-    P="$( find -L "$SRC" -name "${LIB}" -type f | head -1 )"
-    [ -n "$P" ] && LIBSP+=( "*${SEP}${LIB}${SEP}${P}:" ) && FOUND=Y && break
-    [ $FOUND != Y ] && echo "ERROR: library $LIB not found on local system (but expected)" && exit 4
-  fi
-done
-
-for P in "${LIBSP[@]}"
-do
-  ROOT=$(echo "$P"|cut -f 1 -d ':')
-  LIB=$(echo "$P"|cut -f 2 -d ':')
-  LPATH=$(echo "$P"|cut -f 3 -d ':')
-  RPATH=$(echo "$P"|cut -f 4 -d ':')
-  echo -n "$P"
-  [ "${LPATH:0:1}" != "/" ] && echo -e "\nBUG: expect local library path to be absolute" && exit 5
-  [ "${ROOT}" = "*" ] && echo "(included in package)" && continue
-  [ -n "$RPATH" ] && echo "(available)" && continue # Already exist in TrueNAS
-  echo "(copying to installation)"
-
-  install_lib "${LPATH}" "${SRC}${ROOT}"
-done
-
-echo "updating setup_path.sh..."
-${DIR}/ext/make_setup_path.sh
-
-echo "requesting separate package commands"
-while read BUILDER
-do
-  unset -f package_define_commands    
-  source "$BUILDER"
-  OPTS=""
-  [ ! -x "$BUILDER" ] && OPTS="-D" # Pass -D optioon if builder was disabled
-  BUILDER=$( basename "$BUILDER" )
-  PACKAGE=${BUILDER#build_}
-  PACKAGE=${PACKAGE%.sh}
-  if [ "$( type -t package_define_commands )" = "function" ]
-  then
-    echo "  - defining additional commands for $BUILDER"
-    package_define_commands $OPTS | sed -e '1i\\n# Commands for package $PACKAGE' >> "${LOCAL_DST}/setup_path.sh"
-  else
-    echo "  - no additional commands for $BUILDER"
-  fi
-done < <(find "$DIR/builders.d" -maxdepth 1 -name "build_*.sh" | sort)
-
-[ -z "${TRUENAS_DST}" ] && echo "DANGEROUS ERROR - TRUENAS_DST is empty. Aborting..." && exit 1
-[ -z "${SRC}" ] && echo "DANGEROUS ERROR - SRC is empty. Aborting..." && exit 1
-
-if [ "${TRUENAS_BACKUP}" = "Y" ]
+if [ ${SAVE_CONFIG_MODE} = N ]
 then
-  alias -p
-  title1 "NAS deployment backup"
+  echo "Collecting libraries..."
+  LIBS=( $( collect_libs ) )
+  LIBSP=()  # local lib paths
 
-  [ -z "${TRUENAS_BACKUP_DIR}" ] && TRUENAS_BACKUP_DIR=$( dirname "${TRUENAS_DST}" )
+  echo "Getting TRUENAS available libraries..."
+  #ssh $URI for DIR in $LIBDIR ; do find \$DIR -type f 
+
+  # Find local library paths
+  for LIB in "${LIBS[@]}"
+  do
+    FOUND=N
+    for LD in "${LIBDIRS[@]}"
+    do
+      [ ! -d "$LD" ] && continue
+      P="$( find -L "$LD" -name "${LIB}" -type f | head -1 )"
+      if [ -n "$P" ]
+      then
+        # Check for remote path
+        RP="$( ssh $URI for LD in "${LIBDIRS[@]}" \; do [ -d "\$LD" ] \&\& find -L "\$LD" -name "${LIB}" -type f \; done | head -1 )"
+        LIBSP+=( "${LD}${SEP}${LIB}${SEP}${P}${SEP}${RP}" ) && FOUND=Y && break
+      fi
+    
+    done
+    if [ $FOUND != Y ]
+    then
+      # Try to find in destination (packlage lib)
+      P="$( find -L "$SRC" -name "${LIB}" -type f | head -1 )"
+      [ -n "$P" ] && LIBSP+=( "*${SEP}${LIB}${SEP}${P}:" ) && FOUND=Y && break
+      [ $FOUND != Y ] && echo "ERROR: library $LIB not found on local system (but expected)" && exit 4
+    fi
+  done
+
+  for P in "${LIBSP[@]}"
+  do
+    ROOT=$(echo "$P"|cut -f 1 -d ':')
+    LIB=$(echo "$P"|cut -f 2 -d ':')
+    LPATH=$(echo "$P"|cut -f 3 -d ':')
+    RPATH=$(echo "$P"|cut -f 4 -d ':')
+    echo -n "$P"
+    [ "${LPATH:0:1}" != "/" ] && echo -e "\nBUG: expect local library path to be absolute" && exit 5
+    [ "${ROOT}" = "*" ] && echo "(included in package)" && continue
+    [ -n "$RPATH" ] && echo "(available)" && continue # Already exist in TrueNAS
+    echo "(copying to installation)"
+
+    install_lib "${LPATH}" "${SRC}${ROOT}"
+  done
+
+  echo "updating setup_path.sh..."
+  ${DIR}/ext/make_setup_path.sh
+
+  echo "requesting separate package commands"
+  while read BUILDER
+  do
+    unset -f package_define_commands    
+    source "$BUILDER"
+    OPTS=""
+    [ ! -x "$BUILDER" ] && OPTS="-D" # Pass -D optioon if builder was disabled
+    BUILDER=$( basename "$BUILDER" )
+    PACKAGE=${BUILDER#build_}
+    PACKAGE=${PACKAGE%.sh}
+    if [ "$( type -t package_define_commands )" = "function" ]
+    then
+      echo "  - defining additional commands for $BUILDER"
+      package_define_commands $OPTS | sed -e '1i\\n# Commands for package $PACKAGE' >> "${LOCAL_DST}/setup_path.sh"
+    else
+      echo "  - no additional commands for $BUILDER"
+    fi
+  done < <(find "$DIR/builders.d" -maxdepth 1 -name "build_*.sh" | sort)
+
+  [ -z "${TRUENAS_DST}" ] && echo "DANGEROUS ERROR - TRUENAS_DST is empty. Aborting..." && exit 1
+  [ -z "${SRC}" ] && echo "DANGEROUS ERROR - SRC is empty. Aborting..." && exit 1
+
+  if [ "${TRUENAS_BACKUP}" = "Y" ]
+  then
+    alias -p
+    title1 "NAS deployment backup"
+
+    [ -z "${TRUENAS_BACKUP_DIR}" ] && TRUENAS_BACKUP_DIR=$( dirname "${TRUENAS_DST}" )
   
-  check_var TRUENAS_BACKUP_DIR
-  check_absolute_path TRUENAS_BACKUP_DIR
-  check_var TRUENAS_BACKUP_VERSIONS
-  ssh ${URI} $( remote_file_version ${TRUENAS_BACKUP_VERSIONS} "${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2" )
-  ssh ${URI} tar cfj "${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2" "${TRUENAS_DST}/"
+    check_var TRUENAS_BACKUP_DIR
+    check_absolute_path TRUENAS_BACKUP_DIR
+    check_var TRUENAS_BACKUP_VERSIONS
+    ssh ${URI} $( remote_file_version ${TRUENAS_BACKUP_VERSIONS} "${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2" )
+    ssh ${URI} tar cfj "${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2" "${TRUENAS_DST}/"
+  fi
 fi
+
+
+# DEPLOY_CONFIG_KEEP=Y
+# DEPLOY_CONFIG_TOUCH=N
+# DEPLOY_CONFIG_DUAL_SYNC=Y
+# DEPLOY_CONFIG_CLEANUP=Y
 
 # rsync:
 # -a -> -rlptgoD
@@ -282,8 +294,28 @@ fi
 # -h : human readable
 #
 # -u : update (skip newer files on receiver)
-echo "syncing back to distribute.d..."
-rsync -azhv --existing -u -e ssh --info=copy --dry-run -i "${URI}:${TRUENAS_DST}/" "$SRC" | grep '^[>f]'| sed -E 's/^[>]f.+[[:space:]]//' | rsync -azhv -e ssh --files-from - "${URI}:${TRUENAS_DST}/" "${DIST}"
+if [ ${DEPLOY_CONFIG_KEEP} = Y ]
+then  
+  echo "syncing back to $( basename "${VAULT}" ) ..."
+  rsync -azhv --existing -u -e ssh --info=copy --dry-run -i "${URI}:${TRUENAS_DST}/" "$SRC" | grep '^[>f]'| sed -E 's/^[>]f.+[[:space:]]//' | rsync -azhv -e ssh --files-from - "${URI}:${TRUENAS_DST}/" "${VAULT}"
+
+  if [ ${DEPLOY_CONFIG_CLEANUP} = Y ]
+  then
+    echo "cleaning-up deleted configuration files..."
+    rsync --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose "${URI}:${TRUENAS_DST}/" "${VAULT}"
+  fi
+    
+  if [ ${DEPLOY_CONFIG_DUAL_SYNC} = Y ]
+  then
+    echo "syncing known config files..."
+    rsync --recursive --existing --verbose "${URI}:${TRUENAS_DST}/" "${VAULT}"
+  fi
+    
+else
+  [ ${SAVE_CONFIG_MODE} != N ] && echo "WARNING: save-config mode requested, but config saving disabled in config.sh" >&2
+fi
+
+[ ${SAVE_CONFIG_MODE} != N ] && exit 0
 
 #echo "syncing NAS..."
 #rsync -avzh -e ssh --chown ${DST_USER}:${DST_GROUP} --delete "${SRC}/" "${URI}:${TRUENAS_DST}"

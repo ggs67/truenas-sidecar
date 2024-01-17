@@ -13,8 +13,7 @@
 !/build.sh
 !/libs
 !/libs/*.lib
-!/distribute.d
-!/distribute.d/*
+!/config_vault.d
 !/gglib
 !/gglib/include
 !/gglib/l.d
