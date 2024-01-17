@@ -14,6 +14,9 @@ declare -r DIR=$( readlink -e "$DIR" )
 [ -z "$DIR" ] && echo "error: unexpected empty DIR variable." && exit 99
 cd "$DIR" || exit 1
 
+source gglib/include errmgr
+Establish
+
 declare -r CONFDIR="${DIR}/conf.d"
 declare -r BUILDERDIR="${DIR}/builders.d"
 declare -r LOGROOT="${DIR}/logs"
@@ -83,21 +86,21 @@ isFunction()
 }
 
 # First we get ony the error catcher
-source ${DIR}/gglib/include errmgr
-Establish
+#source ${DIR}/gglib/include errmgr
+#Establish
 
 # ...and then all other libraries
-source ${GGLIB_DIR}/include all
+gglib_include all
 
 #-----------------------------------------------------------------------------
 
-source ${DIR}/conf.d/config.sh
+#source ${DIR}/conf.d/config.sh
+source "${DIR}/ext/load_config.sh"
 
 # Sanity checks
-check_var TRUENAS_DST
-check_var LOCAL_DST
 check_equal_vars_W TRUENAS_DST LOCAL_DST
 check_path_in_W TRUENAS_DST "/mnt"
+
 DEFAULT_BUILD_PHASE=${DEFAULT_BUILD_PHASE:-build}
 check_value_in DEFAULT_BUILD_PHASE "${BUILD_PHASE_LIST}"
 
@@ -445,8 +448,8 @@ build_end()
 #-----------------------------------------------------------------------------
 reset_shell_options()
 {
-  [ -n "${SHELL_ENABLED_OPTS}" ] && shopt -s ${SHELL_ENABLED_OPTS}
-  [ -n "${SHELL_DISABLED_OPTS}" ] && shopt -s ${SHELL_DISABLED_OPTS}
+  [ -n "${SHELL_ENABLED_OPTS}" ] && eval shopt -s ${SHELL_ENABLED_OPTS}
+  [ -n "${SHELL_DISABLED_OPTS}" ] && eval shopt -u ${SHELL_DISABLED_OPTS}
   SHELL_OPTS_STACK=() # clear stack
 }
 

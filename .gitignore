@@ -22,4 +22,5 @@
 
 !/ext
 !/ext/*.sh
+!/ext/*.py
 !/ext/*.template

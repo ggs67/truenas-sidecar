@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-DIR=$( dirname "${BASH_SOURCE}" )
+CHECKER_DIR=$( dirname "${BASH_SOURCE}" )
 
-source ${DIR}/../gglib/include checks
+source ${CHECKER_DIR}/../gglib/include checks
 
-# source ${DIR}/../conf.d/config.sh
+source ${CHECKER_DIR}/../conf.d/config.sh
 
 check_config()
 {

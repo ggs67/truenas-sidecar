@@ -20,7 +20,7 @@ EOF
 package_prepare()
 {
   ARCHIVE="emacs-${VERSION}.tar.gz"
-  LINK="https://www.gutscheinrausch.de/mirror/gnu/emacs/${ARCHIVE}"
+  LINK="https://ftp.gnu.org/gnu/emacs/${ARCHIVE}"
 
   echo "Retrieving $ARCHIVE..."
   download_archive "$LINK"

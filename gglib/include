@@ -10,6 +10,12 @@ GGLIB_DIR=$( realpath -e "${GGLIB_DIR}" )
 
 gglib_include()
 {
+  if [ "$1" = "all" ]
+  then
+    source ${GGLIB_DIR}/include all # Callback to process all libs
+    return 0
+  fi
+  
   while [ -n "$1" ]
   do
     local _lib="$1"
