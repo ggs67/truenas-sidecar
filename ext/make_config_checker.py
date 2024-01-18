@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# NOTE: This script file together with it's sister bash script file are only meant to be used for development of
+#       the sidecar for the automatic generation of config (config.sh) loading validating
+
 import json
 import re
 import sys

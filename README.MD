@@ -1,6 +1,13 @@
 
+# CAUTION - KNOWN MAJOR ISSUE
+
+The current version of the sidecar will result in the loss of modified configuration files in the NAS sidecar upon the next deployment.  
+
+A solution to this is currently under development but is not not trivial because of possible site specific config files as well as different behaviors of the package staging processes which present
+a number of major pitfalls.
+
 # Introduction
-Project llowing additional linux packages to be installed on a TrueNAS Scale NAS, without altering the TrueNAS installation itself. Thus: "sidecar installation"
+Project allowing additional Linux packages to be installed on a TrueNAS Scale NAS, without altering the TrueNAS installation itself. Thus: "sidecar installation"
 
 Project start: 02-JAN-2024
 
@@ -65,15 +72,23 @@ For this reason I created a set of scrips assuring the following tasks:
 * Install the packages onto TrueNAS (actually copy, not altering the package database)
 * provide a script which defines path environment variables to the packages
 
+# Glossary of used terms
+
+- ***Build Environment:***  the build environment is the host or virtual machine used for preparing (eg. building) the packages to be "installed" in the NAS sidecar. It is highly recommended to use a dedicated virtual machine for this purpose
+- ***NAS:*** speaking of NAS (or TrueNAS) we refer to the target NAS on which the sidecar packages are to be installed.
+- ***Package:*** while actual linux packages are not supported for deployment by the project, we still call each software to be build and installed as a package. Each package has its own build script. It is also not recommended to bundle multiple software within a single package (f.ex. bundle a database server with a software requiring it), but separate them in different bundles. The project is currently not managing any such dependencies but eventually will.
+- ***Sidecar:*** the word sidecar can be tricky but should be clear within its context. Usually when speaking of "the sidecar", it refers to the directory tree of the sidecar installation on the NAS. While, when referring to the building environment we usually use "sidecar project" or "sidecar builder", when speaking of the files and directories of the downloaded TrueNAS/sidecar github project. So when speaking of the "github builder root" it does not refer to the physical root (/) but the root directory of the sidecar project (usually /..../sidecar, for ex. /home/dev/sidecar)
+
 # How it works
 
 ## Build environment
 
-First of all we need a separate build environment, as TrueNAS cannot build the packages. The build environment could be a virtual machine (recommended) or a physical server running the same Linux version (currently Debian 12) than your TrueNAS. 
+First of all we need a separate build environment, as TrueNAS cannot be used to build the packages. The build environment could be a virtual machine (recommended) or a physical server running the same Linux version  than your TrueNAS (currently Debian 12). 
 
 The linux version can be obtained on TrueNAS with `cat /etc/os-release`
 
-It is best to limit this environment use to TrueNAS package building only.
+It is best to limit this hosts use to TrueNAS package building only.
+
 ## Build user
 
 The next step is to create a non-superuser user which does the actual builds. Note that the scripts are restricted to run  in non-root (not root and not UID or GID = 0) user process and will abort if run under root.
@@ -85,13 +100,38 @@ it must be allowed to use sudo. This is could be achieved for example by adding 
 
 Setting up the build environment is as simple as copying the file tree from this repository into a directory in the build users home directory.
 
-Which is easiest achieved by using `git clone`
+Which is easiest achieved by using `git clone https://github.com/ggs67/truenas-sidecar.git`
 
-## Sidecar directory structure
+## Deployment areas
+Sidecar uses 3 distinct areas to store files at different stages during the deployment. 
+
+These are described in the next sections in order of use.
+
+### Package area
+
+The package area is contained in the package directory in the sidecar project root. This area, by default, receives the downloaded archives and the build directories for the different packages.
+
+For custom builders not relying on sidecar functions for download and preparation (i.e. extraction,...) it is highly recommended to stick on using this area as intended, i.e. create a build subdirectory for the target package
+
+### Staging area
+Once the package is build it can be staged, i.e. installed into the staging area.  It is very important (and also currently enforced) that the staging area path and the final sidecar path on the NAS are identical. This because the build process may hardcode some paths into the software.
+
+### TrueNAS Sidecar
+This the actual destination of the software, i.e. a folder on the NAS which contains the sidecar files, and ONLY the sidecar files
+
+The project currently enforces the sidecar area to be below the /mnt directory as it is expected to be on some ZFS dataset managed by TrueNAS
+
+## Sidecar builder directory structure
+
 
 ### Root directory
 Contains the main scripts to manage the building and deployment process
-### builders.d
+
+### ext/
+
+This directory contains additional scripts internally used by the project and not meant to be used directly
+
+### builders.d/
 Contains the builder scripts (`build_{package}.sh`)  for the different packages. Currently the following builders are available:
 - python
 - imagick
@@ -99,28 +139,46 @@ Contains the builder scripts (`build_{package}.sh`)  for the different packages.
 - emacs
 
 Note that packages can be build explicitly one by one or all at once. In the latter case builders can be enabled and disabled. Explicit builds are always executed when requested, even if the builder is disabled.
-### conf.d
-This directory contains the optional builder configuration filles (`build_{package}.conf`). Most builders will have at least a  minimal configuration file to configure the built version number. Son however download a constant link always representing the latest version and thus may not use any config file at all. 
 
-Missing files (for builders needing one) are generated by the builder, using default values, on first build.
-### logs
+### conf.d/
+This directory contains man configuration file (`config.sh`) and the optional builder configuration filles (`build_{package}.conf`). Most builders will have at least a  minimal configuration file to configure the built version number. Some however download a constant link always representing the latest version and thus may not use any config file at all. 
 
-During the building process some command like the build itself generate a mass of output possibly burying builder messages between them. For this reason such commands are automatically logged into separate log files which are stored in a per builder  directory under the logs directory. The content of these log files is automatically displayed in case of a detected error. Log files are retained after the build for reference.
-### packages
-This is the default directory for downloading and building the packages
-### distribute.d
-Files contained in this directory are transferred to TrueNAS together with the build files. These files are 2-way synchronized during the deployment, to avoid that configuration files get unexpectedly overwritten.
+Missing files (for builders needing one) are generated by the builder on the fly, using default values, on first build.
 
-### gglib
+### logs/
+
+During the building process some commands, like the build itself generate a mass of output possibly burying builder messages between them. For this reason such commands are automatically logged into separate log files which are stored in a per builder  directory under the logs directory. The content of these log files is automatically displayed in case of a detected error. Log files are retained after the build for reference.
+
+### packages/
+This is the default directory for downloading and building the packages. Each package must use its own private directory (which is usually managed by functions provided by sidecar)
+
+### config_vault.d/
+Files contained in this directory are transferred to TrueNAS together with the build files. These files are 2-way synchronized during the deployment, to avoid that configuration files get unexpectedly overwritten. This process is highly configurable and will be explained in detail later in this document.
+
+### gglib/
+gglib is candidate for a separate repository later and contains a bash function library separated in different modules which can be imported as required (similar to python import).
+
 ## Prerequisites
 
 Note that Debian may not install sudo by default, in which case manual installation of sudo via the root use is required `apt install sudo` before any further step
 
-After this you run the `prepare_environment.sh` script. This is only required once at first installation or update of the scripts. This script will install the required scripts.
+After this you run the `prepare_environment.sh` script. This is only required once at first installation or update of the scripts. This script will install the required packages.
 
-In addition it will check the availability of required commands and suggest additional packages if missing. In that case you may re-run this script after the installation in order to make sure all tests have been done.
+In addition it will check the availability of required commands and suggest additional packages if missing. In that case you may re-run this script after the installation in order to make sure all tests will pass.
 
 ## Deployment process
+### Caution
+There are a few possible pitfalls with sidecar installation. This document will document the steps which are done in an attempt to avoid them. Make sure you understand the pitfalls completely before any build and deployment to avoid data loss.
+
+The pitfalls are:
+
+#### Time synchronization
+
+#### Debian version mismatch
+
+#### Edited config files
+
+
 ### General process
 Once the  package build it can be installed in the local staging area, which should be the exact same path than on the destination NAS. During deployment all files in the staging area are copied to the destination NAS deployment directory (TRUENAS_DST)
 

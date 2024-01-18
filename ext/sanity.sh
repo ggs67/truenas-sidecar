@@ -1,4 +1,4 @@
-#!/usr/bin/enb bash
+#!/usr/bin/env bash
 
 #set -x
 
@@ -10,9 +10,9 @@ Establish
 # First lets check for same time zone
 do_sanity_checks()
 {
-local SSH="ssh root@${NAS}"
+local SSH=( "ssh" "root@${NAS}" )
 local LTZ=$( timedatectl | grep -E -i 'time[[:space:]]*zone[[:space:]]*[:]' ) || true
-local RTZ=$( ssh root@$NAS timedatectl | grep -E -i 'time[[:space:]]*zone[[:space:]]*[:]' ) || true
+local RTZ=$( "${SSH[@]}" timedatectl | grep -E -i 'time[[:space:]]*zone[[:space:]]*[:]' ) || true
 local _status="OK"
 local _local _remote
 
@@ -35,8 +35,15 @@ local _local _remote
   local _allow=30
   verbose 1 "Checking local and NAS time difference"
 
-  # SSH first for lowest delay between commands
-  local _rt=$( ${SSH} date \"+%d-%m-%Y %H:%M:%S\|%s\")
+  # NOTE: The easiest and most precise way would have been to use NTP tools
+  #       to query the time difference. chrony (the NTP server) on TrueNAS
+  #       is however configured by default not to allow remote queries,
+  #       so we revert to command line tools
+  
+  # SSH first for lowest delay between commands as connection, login
+  #     and command start are expected to be longer than the command
+  #     rundown and ssh disconnect after the output of the time
+  local _rt=$( "${SSH[@]}" date \"+%d-%m-%Y %H:%M:%S\|%s\")
   local _lt=$( date "+%d-%m-%Y %H:%M:%S|%s" )
   
   local _lts=$( echo "$_lt" | cut -d '|' -f 2 )
@@ -65,10 +72,9 @@ local _local _remote
   fi
 
   # 3. CHECK OS VERSIONS
-
   verbose 1 "checking local and NAS distribution versions"
   _local=$( cat /etc/os-release )
-  _remote=$( $SSH cat /etc/os-release )
+  _remote=$( "${SSH[@]}" cat /etc/os-release )
 
   local _local_version=$( echo "$_local" | grep '^VERSION_ID=' )
   local _local_dist=$( echo "$_local" | grep '^ID=' )

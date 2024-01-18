@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# NOTE: This script file together with it's sister python file are only meant to be used for development of
+#       the sidecar for the automatic generation of config (config.sh) loading validating
+
 DIR=$( dirname "$0" )
 
 #cd "${DIR}" || exit 1

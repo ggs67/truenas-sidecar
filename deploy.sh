@@ -23,6 +23,9 @@ SEP=":"
 
 gglib_include present checks files
 
+# Do sanityy check between build environment and NAS
+source ext/sanity.sh
+
 #-----------------------------------------------------------------------------
 require()
 {
@@ -114,16 +117,21 @@ local L
 
 #-----------------------------------------------------------------------------
 # %1 : local lib path
-# %2 : [lib link] (internal use only)
+# %2 : [lib|link] (link is internal use only)
 install_lib()
 {
+local linkcb=N
+  [ "$1" = "-l" ] && linkcb=Y && shift
 local LIB="$1"
 local LIBINSTDIR="$2" # is ${SRC}/${ROOT} (actually without / as $ROOT has a leading one)
 
   local LIBNAME=$( basename "${LIB}" )
   local LIBINST="${LIBINSTDIR}/${LIBNAME}"
 
-  # Is link, then process actually library first
+  [ $linkcb = N ] && verbose 2 "  staging ${LIBNAME}..."
+  [ $linkcb = Y ] && verbose 2 "    linking ${LIBNAME}..."
+  
+  # Is link, then process actual library first
   if [ -L "$LIB" ]
   then
     local LIBFILE=$( readlink -e "${LIB}" )
@@ -133,18 +141,19 @@ local LIBINSTDIR="$2" # is ${SRC}/${ROOT} (actually without / as $ROOT has a lea
       exit 6
     fi
 
+    local LIBFILEINST
     root_lib LIBFILEINST "${LIBFILE}" || echo "WARNING: ${LIBFILE} not located in LIBDIRS, using full path"
     LIBFILEINST="${SRC}${LIBFILEINST}" # Build full installation path
     local LIBFILEINSTDIR=$( dirname "${LIBFILEINST}" )
 
-    install_lib "${LIBFILE}" "${LIBFILEINSTDIR}"
+    install_lib -l "${LIBFILE}" "${LIBFILEINSTDIR}"
     # Here we can assume that the regular lib already has been installed
     [ ! -d "$LIBINSTDIR" ] && mkdir -p "$LIBINSTDIR"
 
     [ -e "${LIBINST}" -a ! -L "${LIBINST}" ] && rm "${LIBINST}" # Delete potenmtial file (not expected link)
     if [ -L "${LIBINST}" ]
     then
-      # Link already exists so lets see if it points to the corre ct file
+      # Link already exists so lets see if it points to the correct file
       local POINTER=$( readlink -m "${LIBINST}" )
       [ "${POINTER}" =	"${LIBFILEINST}" ] && return # Link OK
       rm "${LIBINST}" # Non-matching link, recreate
@@ -164,12 +173,14 @@ usage()
     echo "usage: ${ME} [-s|--save-config]" >&2
     echo "" >&2
     echo "  -s : only save config and exit" >&2
+    echo "  -v : increase verbosity (multiple occurences possible)" >&2
     echo "" >&2
     exit 99
     return 0 # Paranoia allowing for && capture
 }
 
 SAVE_CONFIG_MODE=N
+VERBOSE=0
 
 while [ "${1:0:1}" = "-" ]
 do
@@ -182,6 +193,8 @@ do
       -s|--save-config)
            SAVE_CONFIG_MODE=Y
            ;;
+      -v) VERBOSE=$((VERBOSE+1))
+	  ;;
       *) echo "error: unknown option $OPT"
          usage
          exit 99
@@ -190,13 +203,18 @@ done
 
 if [ ${SAVE_CONFIG_MODE} = N ]
 then
-  echo "Collecting libraries..."
-  LIBS=( $( collect_libs ) )
-  LIBSP=()  # local lib paths
+  title "Resolving libraries"
+  
+  echo  "Collecting required libraries..."
+  #LIBS=( $( collect_libs ) )
+  readarray -t LIBS < <( collect_libs )
+  LIBSP=() # resolved libs: entry = "<root-lib-dir> <library> <local-path> <remote-path>"
 
-  echo "Getting TRUENAS available libraries..."
   #ssh $URI for DIR in $LIBDIR ; do find \$DIR -type f 
 
+  verbose 1 -e "  ${#LIBS[@]} libraries identified\n"
+  
+  echo "Identifying unavailable libraries on TrueNAS..."
   # Find local library paths
   for LIB in "${LIBS[@]}"
   do
@@ -204,43 +222,47 @@ then
     for LD in "${LIBDIRS[@]}"
     do
       [ ! -d "$LD" ] && continue
-      P="$( find -L "$LD" -name "${LIB}" -type f | head -1 )"
+      P="$( find -L "$LD" -name "${LIB}" -type f 2>/dev/null | head -1 )"
       if [ -n "$P" ]
       then
         # Check for remote path
-        RP="$( ssh $URI for LD in "${LIBDIRS[@]}" \; do [ -d "\$LD" ] \&\& find -L "\$LD" -name "${LIB}" -type f \; done | head -1 )"
-        LIBSP+=( "${LD}${SEP}${LIB}${SEP}${P}${SEP}${RP}" ) && FOUND=Y && break
+        RP=$( ssh $URI for LD in "${LIBDIRS[@]}" \; do [ -d "\$LD" ] \&\& find -L "\$LD" -name "${LIB}" -type f 2>/dev/null \; done | head -1 )
+        LIBSP+=( "${LD}${SEP}${LIB}${SEP}${P}${SEP}${RP}" )
+	FOUND=Y
+	break
       fi
-    
     done
+    
     if [ $FOUND != Y ]
     then
-      # Try to find in destination (packlage lib)
-      P="$( find -L "$SRC" -name "${LIB}" -type f | head -1 )"
-      [ -n "$P" ] && LIBSP+=( "*${SEP}${LIB}${SEP}${P}:" ) && FOUND=Y && break
+      # Try to find in staging area (packlage lib)
+      P="$( find -L "$SRC" -name "${LIB}" -type f 2>/dev/null | head -1 )"
+      [ -n "$P" ] && LIBSP+=( "*${SEP}${LIB}${SEP}${P}${SEP}" ) && FOUND=Y
       [ $FOUND != Y ] && echo "ERROR: library $LIB not found on local system (but expected)" && exit 4
     fi
   done
 
+  echo "Staging unavailable libraries"
   for P in "${LIBSP[@]}"
   do
     ROOT=$(echo "$P"|cut -f 1 -d ':')
     LIB=$(echo "$P"|cut -f 2 -d ':')
     LPATH=$(echo "$P"|cut -f 3 -d ':')
     RPATH=$(echo "$P"|cut -f 4 -d ':')
-    echo -n "$P"
-    [ "${LPATH:0:1}" != "/" ] && echo -e "\nBUG: expect local library path to be absolute" && exit 5
-    [ "${ROOT}" = "*" ] && echo "(included in package)" && continue
-    [ -n "$RPATH" ] && echo "(available)" && continue # Already exist in TrueNAS
-    echo "(copying to installation)"
+    verbose 3 -n "${LIB} "
+    [ "${LPATH:0:1}" != "/" ] && verbose 3 -e "\nBUG: expect local library path to be absolute" && exit 5
+    [ "${ROOT}" = "*" ] && verbose 3 "(included in package)" && continue
+    [ -n "$RPATH" ] && verbose 3 "(available)" && continue # Already exist in TrueNAS
+    verbose 3 "(copying to installation)"
 
     install_lib "${LPATH}" "${SRC}${ROOT}"
   done
-
-  echo "updating setup_path.sh..."
+  
+  title "Making setup_path.sh"
+  echo "generate new setup_path.sh..."
   ${DIR}/ext/make_setup_path.sh
 
-  echo "requesting separate package commands"
+  echo "checking for additional package commands..."
   while read BUILDER
   do
     unset -f package_define_commands    
@@ -265,15 +287,18 @@ then
   if [ "${TRUENAS_BACKUP}" = "Y" ]
   then
     alias -p
-    title1 "NAS deployment backup"
+    title "NAS sidecar backup"
 
     [ -z "${TRUENAS_BACKUP_DIR}" ] && TRUENAS_BACKUP_DIR=$( dirname "${TRUENAS_DST}" )
   
     check_var TRUENAS_BACKUP_DIR
     check_absolute_path TRUENAS_BACKUP_DIR
     check_var TRUENAS_BACKUP_VERSIONS
+    echo "versioning previous backups..."
     ssh ${URI} $( remote_file_version ${TRUENAS_BACKUP_VERSIONS} "${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2" )
-    ssh ${URI} tar cfj "${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2" "${TRUENAS_DST}/"
+    BACKUP_PATH="${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2"
+    echo "creating new backup ${BACKUP_PATH}"
+    ssh ${URI} tar cfj "${BACKUP_PATH}" "${TRUENAS_DST}/"
   fi
 fi
 
@@ -282,6 +307,7 @@ fi
 # DEPLOY_CONFIG_TOUCH=N
 # DEPLOY_CONFIG_DUAL_SYNC=Y
 # DEPLOY_CONFIG_CLEANUP=Y
+# DEPLOY_NO_SITE_CONFIG_FILES
 
 # rsync:
 # -a -> -rlptgoD
@@ -295,9 +321,20 @@ fi
 #
 # -u : update (skip newer files on receiver)
 if [ ${DEPLOY_CONFIG_KEEP} = Y ]
-then  
+then
+  title "Saving config files"
+
+  echo "syncing back to staging area"
+  # NOTE: This only saves files also known in the staging area (regardless of DEPLOY_NO_SITE_CONFIG_FILES)
+  #       This is to avoid garbrage in the stagin area. The purpose of this sync is only meant as fallback
+  #       avoiding overwriting of user config files by the deployment. Deployment will however still
+  #       delete any site-specific config files which are then restored from the vault (saved below)
+  rsync -azhv --existing -u -e ssh --progress "${URI}:${TRUENAS_DST}/" "$SRC" 
+  
   echo "syncing back to $( basename "${VAULT}" ) ..."
-  rsync -azhv --existing -u -e ssh --info=copy --dry-run -i "${URI}:${TRUENAS_DST}/" "$SRC" | grep '^[>f]'| sed -E 's/^[>]f.+[[:space:]]//' | rsync -azhv -e ssh --files-from - "${URI}:${TRUENAS_DST}/" "${VAULT}"
+  OPT=""
+  [ ${DEPLOY_NO_SITE_CONFIG_FILES} = Y ] && OPT="${OPT} --existing"
+  rsync -azhv ${OPT} -u -e ssh --info=copy --dry-run -i "${URI}:${TRUENAS_DST}/" "$SRC" | grep '^[>f]'| sed -E 's/^[>]f.+[[:space:]]//' | rsync -azhv -e ssh --files-from - "${URI}:${TRUENAS_DST}/" "${VAULT}"
 
   if [ ${DEPLOY_CONFIG_CLEANUP} = Y ]
   then
@@ -317,7 +354,8 @@ fi
 
 [ ${SAVE_CONFIG_MODE} != N ] && exit 0
 
-#echo "syncing NAS..."
-#rsync -avzh -e ssh --chown ${DST_USER}:${DST_GROUP} --delete "${SRC}/" "${URI}:${TRUENAS_DST}"
+title "Deployment to ${NAS}"
+echo "syncing NAS..."
+rsync -avzh -e ssh --chown ${DST_USER}:${DST_GROUP} --delete "${SRC}/" "${URI}:${TRUENAS_DST}"
 
 

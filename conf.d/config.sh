@@ -61,14 +61,47 @@ TRUENAS_BACKUP_VERSIONS=5
 # situations:
 
 # DEPLOY_CONFIG_KEEP must be Y for the script to attempt saving  any config files
-DEPLOY_CONFIG_KEEP=Y
+#
+# CAUTION: THINK TWICE BEFORE DISABLING
+#
+#          Deployment to the NAS is doen with rsync --delete to allow for removing
+#          packages by purging the staging area and not building the package
+#          to be removed. On the other hand you may have packages that allow for
+#          config includes, i.e. the main config file including user config files which
+#          are not part of the initial installation (for example site config files in
+#          apache). In such scenarios the package deployment will delete these user config
+#          files resulting in data/functionality loss.
+#
+#          This can be avoided with DEPLOY_CONFIG_KEEP=Y (see documentation for more information)
+DEPLOY_CONFIG_KEEP=N
 #-> check_yes_no
+
+# The following setting instructs the deployment process not to expect any site-specific
+# config files. I.e. files added to the NAS sidecar by the user (this does not impact the
+# editing of existing files iunitially installed by the package)
+#
+# CAUTION WHEN ENABLING THIS !!!
+#
+# If a user adds any file to the NAS sidecar which are not present in any installed package
+# (i.e. not present in the staging area) these files WILL BE DELETED if the following setting is
+# 'Y'
+#
+# Caution also with side-effects (see docs)
+DEPLOY_NO_SITE_CONFIG_FILES=N
+#-> check_yes_no
+
+# Reverse sync is a fallback sync (i.e. an additional safty net) in order to avoid overwriting of
+# config files on deployment. Overwritten config files should be recovered through the 3-way
+# config syncs as well.
+#
+# Note that this setting does only sync back modified config files existing in the staging area
+# (i.e. part of the initial package install). This in order to avoid 
+DEPLOY_CONFIG_REVERSE_SYNC=Y
 
 # This setting increases the probably to keep configuration files safe (in scenarios 1&3),
 # while  having the side effect of updating the concerned files creation time to the current
 # time.
 #
-# This way synchronization 
 DEPLOY_CONFIG_TOUCH=N
 #-> check_yes_no
 

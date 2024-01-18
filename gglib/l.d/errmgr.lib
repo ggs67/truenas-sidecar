@@ -116,9 +116,14 @@ warn()
   wait_for_abort ${_wait}
 }
 
+# %1: level
+# %2...: echo options and/or paramaters
+#
+# issue echo with specified parameters if level <= VERBOSE
 declare -g VERBOSE=${VERBOSE:-0}
 verbose()
 {
   [ $1 -gt $VERBOSE ] && return 0
-  echo "$2"
+  shift
+  echo "$@"
 }
