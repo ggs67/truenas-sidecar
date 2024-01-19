@@ -95,7 +95,7 @@ DEPLOY_NO_SITE_CONFIG_FILES=N
 # config syncs as well.
 #
 # Note that this setting does only sync back modified config files existing in the staging area
-# (i.e. part of the initial package install). This in order to avoid 
+# (i.e. part of the initial package install).
 DEPLOY_CONFIG_REVERSE_SYNC=Y
 
 # This setting increases the probably to keep configuration files safe (in scenarios 1&3),

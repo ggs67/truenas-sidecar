@@ -1,3 +1,95 @@
+1. [CAUTION - KNOWN MAJOR ISSUE](#CAUTION%20-%20KNOWN%20MAJOR%20ISSUE)
+1. [Introduction](#Introduction)
+1. [Disclaimer](#Disclaimer)
+	1. [Work in progress](#Work%20in%20progress)
+	1. [Risks and possible Side Effects](#Risks%20and%20possible%20Side%20Effects)
+	1. [Disclaimer of Warranty](#Disclaimer%20of%20Warranty)
+	1. [Disclaimer of Endorsement](#Disclaimer%20of%20Endorsement)
+1. [Introduction](#Introduction)
+1. [What is TrueNAS-Sidecar ?](#What%20is%20TrueNAS-Sidecar%20?)
+1. [Glossary of used terms](#Glossary%20of%20used%20terms)
+1. [How it works](#How%20it%20works)
+	1. [Build environment](#Build%20environment)
+	1. [Build user](#Build%20user)
+	1. [Build environment](#Build%20environment)
+	1. [Deployment areas](#Deployment%20areas)
+		1. [Package area](#Package%20area)
+		1. [Staging area](#Staging%20area)
+		1. [TrueNAS Sidecar](#TrueNAS%20Sidecar)
+	1. [Sidecar builder directory structure](#Sidecar%20builder%20directory%20structure)
+		1. [Root directory](#Root%20directory)
+		1. [ext/](#ext/)
+		1. [builders.d/](#builders.d/)
+		1. [conf.d/](#conf.d/)
+		1. [logs/](#logs/)
+		1. [packages/](#packages/)
+		1. [config_vault.d/](#config_vault.d/)
+		1. [gglib/](#gglib/)
+	1. [Prerequisites](#Prerequisites)
+	1. [Deployment process](#Deployment%20process)
+		1. [Caution](#Caution)
+			1. [Time zones](#Time%20zones)
+			1. [Time synchronization](#Time%20synchronization)
+			1. [Debian version mismatch](#Debian%20version%20mismatch)
+			1. [Edited config files](#Edited%20config%20files)
+		1. [Config file handling](#Config%20file%20handling)
+			1. [Config file sources](#Config%20file%20sources)
+			1. [Related challenges](#Related%20challenges)
+			1. [The handling process](#The%20handling%20process)
+				1. [DEPLOY_CONFIG_KEEP (Y/N, recommended=Y)](#DEPLOY_CONFIG_KEEP%20(Y/N,%20recommended=Y))
+				1. [DEPLOY_NO_SITE_CONFIG_FILES (Y/N, recommended=N)](#DEPLOY_NO_SITE_CONFIG_FILES%20(Y/N,%20recommended=N))
+				1. [DEPLOY_CONFIG_REVERSE_SYNC (Y/N)](#DEPLOY_CONFIG_REVERSE_SYNC%20(Y/N))
+				1. [DEPLOY_CONFIG_TOUCH](#DEPLOY_CONFIG_TOUCH)
+			1. [Config hint file](#Config%20hint%20file)
+		1. [General process](#General%20process)
+		1. [Detailed deployment steps](#Detailed%20deployment%20steps)
+			1. [Library gathering](#Library%20gathering)
+			1. [make_setup_path.sh](#make_setup_path.sh)
+			1. [Backup of the existing sidecar](#Backup%20of%20the%20existing%20sidecar)
+			1. [Three-way syncing of configuration filers](#Three-way%20syncing%20of%20configuration%20filers)
+			1. [Deployment](#Deployment)
+	1. [Configuration](#Configuration)
+		1. [Part 1: Mandatory config area](#Part%201:%20Mandatory%20config%20area)
+		1. [Part2: Optional config area](#Part2:%20Optional%20config%20area)
+		1. [Part 3: Static area](#Part%203:%20Static%20area)
+	1. [SSH](#SSH)
+1. [Build files](#Build%20files)
+	1. [build_{package}.*](#build_%7Bpackage%7D.*)
+		1. [conf.d/build_{package}.conf](#conf.d/build_%7Bpackage%7D.conf)
+		1. [builders.d/build_{package}.sh](#builders.d/build_%7Bpackage%7D.sh)
+		1. [Builder callback functions](#Builder%20callback%20functions)
+			1. [builder_default_config(config-file) [optional]](#builder_default_config(config-file)%20%5Boptional%5D)
+			1. [Main building functions](#Main%20building%20functions)
+				1. [package_prepare()](#package_prepare())
+				1. [package_prerequisites() [optional]](#package_prerequisites()%20%5Boptional%5D)
+				1. [package_config() [optional]](#package_config()%20%5Boptional%5D)
+				1. [package_build()](#package_build())
+				1. [package_install()](#package_install())
+			1. [package_config_files()](#package_config_files())
+	1. [build.sh](#build.sh)
+		1. [Variables](#Variables)
+			1. [CMD_ARGS [TEMP]](#CMD_ARGS%20%5BTEMP%5D)
+			1. [SCRIPT](#SCRIPT)
+			1. [ME](#ME)
+			1. [DIR](#DIR)
+			1. [RUN_DIR](#RUN_DIR)
+			1. [BUILDER](#BUILDER)
+			1. [TARGET](#TARGET)
+			1. [BUILDER_CONFIG](#BUILDER_CONFIG)
+			1. [BUILDER_SCRIPT](#BUILDER_SCRIPT)
+			1. [LOGDIR](#LOGDIR)
+			1. [SYNOPSIS [OPT]](#SYNOPSIS%20%5BOPT%5D)
+			1. [SHELL_ENABLED_OPTS / SHELL_DISABLED_OPTS](#SHELL_ENABLED_OPTS%20/%20SHELL_DISABLED_OPTS)
+			1. [CATCH_LOGFILE [OPT, DYN]](#CATCH_LOGFILE%20%5BOPT,%20DYN%5D)
+			1. [VERBOSE [DYN, default=0]](#VERBOSE%20%5BDYN,%20default=0%5D)
+			1. [BUILD_ALL [INTERNAL]](#BUILD_ALL%20%5BINTERNAL%5D)
+		1. [Functions](#Functions)
+			1. [usage("{error-msg}")](#usage(%22%7Berror-msg%7D%22))
+			1. [usage_info() [CB]](#usage_info()%20%5BCB%5D)
+			1. [catch() [CB]](#catch()%20%5BCB%5D)
+1. [Installed package usage](#Installed%20package%20usage)
+	1. [Command variables and aliases](#Command%20variables%20and%20aliases)
+1. [Roadmap](#Roadmap)
 
 # CAUTION - KNOWN MAJOR ISSUE
 
@@ -41,6 +133,7 @@ I do explicitly point out that, while the goal of the sidecar project is to avoi
 An example of such a potential risk is python, where for example pip could potentially (while not expected) install downloaded modules in a system path. To avoid such side effects is actually also the main reason why the installation path on the development system should match the installation path on the TrueNAS server.
 
 The above gives you only an overview of some of the potential risks and side effects that may occur using this work. 
+
 ## Disclaimer of Warranty
 
 This Work is provided “as is”. Any express or implied warranties, including but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the author be liable for any direct, indirect, incidental, special, exemplary or consequential damages (including, but not limited to, procurement of substitute goods or services, loss of use, data or profits, or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this Work, even if advised of the possibility of such damage.
@@ -52,6 +145,7 @@ Nothing in this Work is intended to constitute an endorsement, explicit or impli
 ## Disclaimer of Endorsement
 
 Reference herein to any specific commercial or non-commercial product, process, or service by trade name, trademark, manufacturer, or otherwise, in this Work does not constitute an endorsement, recommendation, or favoring by the author and shall not be used for advertising or product endorsement purposes.
+
 
 # Introduction
 
@@ -172,12 +266,93 @@ There are a few possible pitfalls with sidecar installation. This document will 
 
 The pitfalls are:
 
+#### Time zones
+While different timezones in the build environment and NAS should not impact the correct synchronization of the files as the underlying timestamps in UTC remain identical, there have been reports of exectely such issues with rsync. Such problems may also be injected (at least in theory) by explicit file "touching" and the related time conversions.
+
+As a result the current deployment sanity checks enforce the build environment and NAS to have the same time zone in order to proceed with the deployment
+
 #### Time synchronization
 
+Another potential pitfall is time synchronization. For this reason both the NAS and the build environment host (or virtual machine) should have their clocks synchronized using NTP. 
+
+The deployment process checks the time synchronization between both hosts and will warn if they are above 10 seconds, and fail with an error above 30 seconds.
+
+For a reliable synchronization it is mandatory that the interval between two consecutive package staging and/or deployments is higher than the time difference between both hosts !
+
+```
+> **_NOTE:_**  NTP should be configured using the same sources on both NAS and build host. Also they should be configured using a minimum of 3 sources in order for NTP to be able to identify falsetickers.
+```
+
+```
+> **_NOTE:_**  NTP should use known reliable servers. If internal servers are used, these in turn should use a minimum of 3 reliable sources (or be reliable stratum 1 servers on their own)
+```
+
 #### Debian version mismatch
+Since the sidecar runs using the TRUENAS Linux environment (mainly libraries, and especially the kernel library) it is very important that both the NAS and the build host are using the same Debian distribution version.
+
+While both hosts should also bee kept up-to-date in parallel (i.e. "apt update ; apt upgrade" run on both systems each time), small divergences are still possible, but these should usually not be an issue.
 
 #### Edited config files
+Edited config files is a whole other level of complexity when it comes to pitfalls. This because there are multiple sources and scenarios of configuration file updates. This complexity deserves its own chapter (Config file handling).
 
+### Config file handling
+
+![Config file syncing](docs/img/config_vault.svg)
+
+In this context a config file is any file which has been or may be altered or added by the user to the sidecar. This may be an actual config file or for example an emacs lisp module or theme.
+
+#### Config file sources
+- initially provided by the installer (staging)
+- updated (i.e. edited) by the user
+- updated by installer
+	- always
+	- only if not edited (i.e. not newer than binary file)
+- provided by the user (i.e. site-specific config files not generated by the installer)
+
+#### Related challenges
+Each scenario has its own challenges that need to be addressed. But especially due to the build process being steered by the respective package and this is out of our control there is no 100% safety for config files. For this reason the deployment process offers the possibility to create backups prior to any deployment, and also to keep multiple versions of this backup, as well as an editable config hint file.
+
+#### The handling process
+
+If all options are enabled, the following course of actions is taken in order:
+1. Sync from the NAS to a vault, steered by the staging area (update) (this MUST BE done BEFORE the reverse sync)
+2. Reverse sync (update only) from the NAS to the staging area (only files existing in the staging area)
+3. Sync NAS sidecar again with vault checking for all files existing in the vault (to catch any site-specific files)
+4. Syncing files from the hint file to the vault
+5. stage the package(s)
+6. Sync back the vault to 
+
+The process is steered by the following configuration variables in config.sh
+
+##### DEPLOY_CONFIG_KEEP (Y/N, recommended=Y)
+This is the master variable enabling the configuration file handling at all. If set to "N", which is highly discouraged, config files will not be saved and highly susceptible to be overwritten by subsequent deployments
+
+##### DEPLOY_NO_SITE_CONFIG_FILES (Y/N, recommended=N) 
+If 'Y', this disables special handling of site-specific config files (i.e. files added by the user). This will result in deleting any such file. 
+
+Setting this to 'N' is the safer option and absolutely required if site-specific config files are used, while a setting of 'Y' in the case such files are not used reduces the artefact files left behind by packages over time or when deinstalled.
+
+##### DEPLOY_CONFIG_REVERSE_SYNC (Y/N)
+Reverse sync is a fallback sync (i.e. an additional safety net) in order to avoid overwriting of
+config files on deployment in the first place. Overwritten config files should be recovered through the 3-way config syncs as well.
+
+Note that this setting does only sync back modified config files existing in the staging area
+(i.e. part of the initial package install). This in order to avoid artefacts.
+
+##### DEPLOY_CONFIG_TOUCH
+If enabled (Y), each file in the config vault (wether retrieved in this run or before)  will be "touched" (i.e. get its timestamp set to current time) for in order to make sure it will be synced back to the NAS and also preselect it that way for the next config file sync, as it will be newer than any file in the staging area.
+
+The backside of the medal is that you will be unable to track the time of the last change 
+
+```
+> **_TODO:_**  keep track of config file editing dates by using extended file attributes and a sentinal file. The sentinel file is created (touched) just after the deployment thus we know that any file with an mtime later than this file was modified by the user.
+```
+
+#### Config hint file
+
+```
+> **_TODO:_**  we may consider using extended file attributes to mark files as config files as well
+```
 
 ### General process
 Once the  package build it can be installed in the local staging area, which should be the exact same path than on the destination NAS. During deployment all files in the staging area are copied to the destination NAS deployment directory (TRUENAS_DST)

@@ -161,6 +161,115 @@ check_yes_no_W()
 }
 
 #-------------------------------------------------------------
+ # %1 : level
+ # %2 : var
+ # %3 : expect
+ # %4 : message (optional)
+ # %5 : warning wait delay
+_check_yn()
+{
+local _val
+   eval  _val=\"\$$2\"
+   [ "${_val}" = "$3" ] && return 0
+  _report_check "$1" "$4" "variable $2 expected to have a yes/no value, ie. uppercase 'Y' or 'N' (value=${_val})" "$5"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_yes()
+{
+  _check_yn E "$1" Y "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_yes_B()
+{
+  _check_yn B "$1" Y "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+ # %3 : [wait timeout]
+check_yes_W()
+{
+  _check_yn W "$1" Y "$2" "$3"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_no()
+{
+  _check_yn E "$1" N "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_no_B()
+{
+  _check_yn B "$1" N "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+ # %3 : [wait timeout]
+check_no_W()
+{
+  _check_yn W "$1" N "$2" "$3"
+}
+
+#-------------------------------------------------------------
+# %1 level
+# %2 : var list (comma separated)
+# %3 : message (optional)
+# %4 : warning wait delay
+_check_exclusive()
+{
+local _lvl=$1
+local _vars="$2"
+local _msg="$3"
+local _delay="$4"
+local _have=""
+local _v
+
+  IFS=","
+  set -- $2
+  IFS=
+  while [ -n "$1" ]
+  do
+    check_yes_no "$1"
+    eval _v=\"\$$1\"
+    [ "${_v}" = "N" ] && shift && continue
+    _have="${_have},${_v}"
+  done
+  local _n=$( tr -d -c ',\n' <<<${_have} | wc -c )
+  [ $n -lt 2 ] && return 0
+  _report_check "${_lvl}" "$3" "only one of ${_vars} should be Y, but found ${_have:1} to be." "$4"
+}
+
+# %1 : var list (comma separated)
+# %2 : message (optional)
+check_exclusive()
+{
+  _check_exclusive E "$1" "$2"
+}
+
+# %1 : var list (comma separated)
+# %2 : message (optional)
+check_exclusive_B()
+{
+  _check_exclusive B "$1" "$2"
+}
+
+# %1 : var list (comma separated)
+# %2 : message (optional)
+# %3 : warning wait delay (optional)
+check_exclusive_W()
+{
+  _check_exclusive W "$1" "$2" "$3"
+}
+
+#-------------------------------------------------------------
 _check_equal_vars()
 {
   eval [ "\$$2" = "\$$3" ] && return 0
