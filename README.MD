@@ -98,6 +98,8 @@ The current version of the sidecar will result in the loss of modified configura
 A solution to this is currently under development but is not not trivial because of possible site specific config files as well as different behaviors of the package staging processes which present
 a number of major pitfalls.
 
+Due to this the project is currently undergoing some substantial changes which may (and will eventually) currently break it for some time. Please keep posted for news on this matter, as this is no.1 priority now. For properly handling this issue it is necessary to integrate the deployment process into the building one (they have been separate scripts until now). The reason is that the staging and deployment phases must take place amid of the config file handling.
+
 # Introduction
 Project allowing additional Linux packages to be installed on a TrueNAS Scale NAS, without altering the TrueNAS installation itself. Thus: "sidecar installation"
 
