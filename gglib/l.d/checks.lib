@@ -536,4 +536,45 @@ check_array_W()
   _check_array W "$@"
 }
 
+#-------------------------------------------------------------
+# %1 : level
+# %2 : variable
+# %3 : optional message
+# %4 : [wait timeout]
+_check_directory()
+{
+local _opt _p
+local _lvl="$1"
+
+  shift
+  lazy_flags _opt "$1" && shift
+
+  eval _p=\"\$$2\"
+
+  [ -d "${_p}" ] && return 0
+  lazy_flags -o "${_opt}" && [ ! -e "${_p}" ] && return 0 # does not exist and is optional
+  # If we come here it either does not exist and is not optional
+  # or exists but is not a directory
+   
+  _report_check "${_lvl}" "$3" "variable ${_var}='${_v}' is not a directory" "$4"
+}
+
+# <option>: -o : optional (directory might not exist)
+# %1 : variable
+# %2 : optional message
+# %3 : [wait timeout]
+check_directory()
+{
+  _check_directory E "$@"
+}
+
+check_directory_B()
+{
+  _check_directory B "$@"
+}
+
+check_directory_W()
+{
+  _check_directory W "$@"
+}
 

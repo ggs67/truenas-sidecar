@@ -4,6 +4,9 @@
 
 #set -x
 
+# Allow trapping of command not found
+unset -f command_not_found_handle
+
 declare -r RUN_DIR="$PWD"
 CMD_ARGS=( "$@" )
 declare -r SCRIPT="$0" # Get calling script
@@ -27,6 +30,7 @@ declare -r SHELL_ENABLED_OPTS="checkwinsize cmdhist complete_fullquote extquote 
 declare -r SHELL_DISABLED_OPTS="autocd assoc_expand_once cdable_vars cdspell checkhash checkjobs compat31 compat32 compat40 compat41 compat42 compat43 compat44 direxpand dirspell dotglob execfail expand_aliases extdebug extglob failglob globstar gnu_errfmt histappend histreedit histverify huponexit inherit_errexit lastpipe lithist localvar_inherit localvar_unset login_shell mailwarn no_empty_cmd_completion nocaseglob nocasematch noexpand_translation nullglob progcomp_alias restricted_shell shift_verbose varredir_close xpg_echo"
 SHELL_OPTS_STACK=()
 
+PACKAGE_DIR=""
 VERBOSE=0
 
 declare -r BUILD_PHASE_LIST="prepare,config,build,install"
@@ -270,10 +274,36 @@ local BUILDER
 
 #------------------------------------------------------------
 # %1 : Link
+# Output:
+#  LINK=%1 & ARCHIVE=%2 or extracted arhgive name
+#  PACKAGE_DIR : path to package diorectory
+#  PACKAGE_TYPE=github
+get_github()
+{
+  declare -g LINK="$1"
+  declare -g ARCHIVE="${1##*/}"
+  declare -g PACKAGE_TYPE=github
+  
+  ARCHIVE="${ARCHIVE%.git}"
+  declare -g PACKAGE_DIR="${PACKAGEROOT}/${ARCHIVE}"
+  check_directory -o "${PACKAGE_DIR}"
+  if [ -d "${PACKAGE_DIR}" ]
+  then
+    echo "  fetching ${ARCHIVE}..."
+    ( cd "${PACKAGE_DIR}" ; git fetch )
+  else
+    echo "  cloning ${ARCHIVE}..."    
+    ( cd "${PACKAGEROOT}" ; git clone "$1" )
+  fi    
+}
+
+#------------------------------------------------------------
+# %1 : Link
 # %2 : oprional archive name
 #
 # Output:
 #  LINK=%1 & ARCHIVE=%2 or extracted arhgive name
+# PACKAGE_TYPE=archive
 download_archive() 
 {
   pushd .
@@ -283,6 +313,7 @@ download_archive()
   
 declare -g LINK="$1"
 declare -g ARCHIVE="$2"
+declare -g PACKAGE_TYPE=archive
 
   local LA="${LINK##*/}"
   LA="${LA%%\?*}"
@@ -319,7 +350,14 @@ declare -g ARCHIVE="$2"
 get_package_dir()
 {
 local ARC="$1"
- 
+
+  if [ "${PACKAGE_TYPE}" = "github" ]
+  then
+    check_var PACKAGE_DIR "get_github() should have set PACKAGE_DIR"
+    return 0
+  fi
+    
+
   [ -z "$ARC" ] && ARC="${ARCHIVE}"
   ARC="${PACKAGEROOT}/${ARC}"
   local SRC=$( tar tvf "${ARC}" | head -1 )
@@ -338,11 +376,13 @@ local ARC="$1"
 # options:
 #   -D : distclean using makefile if present
 #   -F : force rextraction
+#   -G : github package (no extraction required)
 prepare_package()
 {
 local SRC="" OPT
 local DISTCLEAN=N
 local FORCE=N
+local github=N
 
   while [ "${1:0:1}" = "-" ]
   do
@@ -353,16 +393,20 @@ local FORCE=N
 	    ;;
         -F) FORCE=Y
 	    ;;
+        -G) github=Y
+	    ;;
         *) echo "ERROR: invalid option $OPT for prepare_package"
     esac
   done
-  
+
+  SRC="$1"
   [ -z "$SRC" ] && SRC="${PACKAGE_DIR}"
   [ -z "$SRC" ] && get_package_dir && SRC="${PACKAGE_DIR}"
   [ -z "$SRC" ] && echo "ERROR: no PACKAGE_DIR in prepare_package()" && exit 1
 
   # Force extractzion if archive newer than package directory
-  [ "${ARCHIVEROOT}/${ARCHIVE}" -nt "${SRC}" ] && FORCE=Y
+  [ "${PACKAGE_TYPE}" = "archive" -a "${ARCHIVEROOT}/${ARCHIVE}" -nt "${SRC}" ] && FORCE=Y
+  [ "${PACKAGE_TYPE}" != "archive" ] && FORCE=N # Never force non-archive
   
   if [ -d "$SRC" ]
   then
@@ -377,17 +421,28 @@ local FORCE=N
       return
     fi
   fi
-  echo "Extracting..."
-  pushd .
-  cd "${PACKAGEROOT}"
-  tar xf "$ARCHIVE"
-  popd
+  if [ "${PACKAGE_TYPE}" = "archive" ]
+  then    
+    echo "Extracting..."
+    pushd .
+    cd "${PACKAGEROOT}"
+    tar xf "$ARCHIVE"
+    popd
+  fi
+}
+
+#------------------------------------------------------------
+snap_install()
+{
+  command -v snap || install_packages snapd
+  sudo snap install "$@"
 }
 
 #------------------------------------------------------------
 install_packages()
 {
-  sudo apt install -y "$@"
+  ( sudo apt install -y "$@" )
+  Establish # For some reason above command disables trap
 }
 
 #------------------------------------------------------------
@@ -562,6 +617,7 @@ title "" "Building $TARGET" ""
 if start_phase prepare
 then  
   title2 "Preparing $TARGET"
+  Establish
   package_prepare
 fi
 
@@ -570,12 +626,14 @@ then
   if isFunction package_prerequisites
   then
     title2 "Installing/preparing prerequisites for $TARGET"
+    Establish
     package_prerequisites
   fi
 
   if isFunction package_config
   then
     title2 "Configuring $TARGET"
+    Establish
     package_config
   fi
 fi
@@ -583,11 +641,13 @@ fi
 if start_phase build
 then  
   title2 "Building $TARGET"
+  Establish
   package_build
 fi
 
 if start_phase install
 then  
   title2 "Preparing $TARGET deployment..."
+  Establish
   package_install
 fi

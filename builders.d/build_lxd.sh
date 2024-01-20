@@ -3,64 +3,37 @@
 #set -x
 
 Establish
-
 #source "$(dirname $0)/build.common" || exit 99
 
 #--------------------------------------------------------------
-builder_default_config()
-{
-    cat >"$1" <<EOF
-
-# Bacula version to be downloaded and built
-VERSION=13.0.3
-
-# Hard coded email address for (dump & job) notifications,
-# can be overriddedn in runtime config
-BACULA_EMAIL=root@localhost
-
-# Hardcoded SMTP server for sending mails
-# can be overriddedn in runtime config
-BACULA_SMTP=localhost
-
-# Build selection, can be any of fd,sd,dir,all
-BACULA_BUILD=all
-
-# Database selection for bacula server, also required for sd)
-# See possible --with-{database-server} option in ./configure --help or bacula documentation
-BACULA_DBSERVER=postgresql
-EOF
-}
+#builder_default_config()
+#{
+#    cat >"$1" <<EOF
+#
+#EOF
+#}
 
 #--------------------------------------------------------------
 package_prepare()
 {
-  ARCHIVE="bacula-${VERSION}.tar.gz"
-  LINK="https://sourceforge.net/projects/bacula/files/bacula/${VERSION}/${ARCHIVE}/download"
+  ARCHIVE="lxd"
+  LINK="https://github.com/canonical/lxd"
 
   echo "Retrieving $ARCHIVE..."
-  download_archive "$LINK" "$ARCHIVE"
+  get_github "${LINK}"
   
-  prepare_package -D
+  prepare_package
 }
 
 #--------------------------------------------------------------
 package_prerequisites()
 {
-  install_packages libssl-dev libreadline-dev
-  install_packages pkg-config
-  if [ "${BACULA_BUILD}" != "fd" ]
-  then
-    local DBPACKAGE=""
-    case "${BACULA_DBSERVER}" in
-      postgresql) DBPACKAGE="libpq-dev" ;;
-      mysql) DBPACKAGE="libmysqlclient-dev" ;;
-      sqlite3) DBPACKAGE="libsqlite3-dev" ;;
-      *) echo "unknown bacula DB-Server type '${BACULA_DBSERVER}'"
-         echo "please review ${BUILDER_CONFIG}"
-         exit 1
-    esac
-    install_packages ${DBPACKAGE}
-  fi
+  install_packages acl attr autoconf automake dnsmasq-base git libacl1-dev libcap-dev liblxc1 libsqlite3-dev libtool libudev-dev liblz4-dev libuv1-dev make pkg-config rsync squashfs-tools tar tcl xz-utils ebtables
+  # missing: liblxc-dev
+  snap_install --classic go  
+  install_packages lvm2 thin-provisioning-tools
+  install_packages busybox-static curl gettext jq sqlite3 socat bind9-dnsutils
+  exit
 }
 
 #--------------------------------------------------------------
