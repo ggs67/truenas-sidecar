@@ -21,7 +21,7 @@ DST_GROUP=admin
 # The default build phase executed when build is called without
 # manually spcifying the phase
 # prepare | config | build | install
-DEFAULT_BUILD_PHASE=build
+DEFAULT_BUILD_PHASE=saveconfig
 #-> check_value_in {} "${BUILD_PHASE_LIST}"
 
 # Enbale Backup of current state of deploymentares on NAS

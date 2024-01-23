@@ -27,7 +27,7 @@ declare -r LOGROOT="${DIR}/logs"
 declare -r PACKAGEROOT="${DIR}/packages"
 declare -r DISTRIBUTEDIR="${DIR}/distribute.d"
 declare -r PERSISTENT_STORE_DIR="${DIR}/persist.d"
-declare PERSISTENT_VARS=( BUILD_PHASE PERSISTENT_VARS LINK ARCHIVE PACKAGE_TYPE PACKAGE_DIR )
+declare PERSISTENT_VARS=( BUILD_PHASE PERSISTENT_VARS LINK ARCHIVE PACKAGE_TYPE PACKAGE_DIR PREFIX )
 
 declare -r SHELL_ENABLED_OPTS="checkwinsize cmdhist complete_fullquote extquote force_fignore globasciiranges globskipdots hostcomplete interactive_comments patsub_replacement progcomp promptvars sourcepath"
 declare -r SHELL_DISABLED_OPTS="autocd assoc_expand_once cdable_vars cdspell checkhash checkjobs compat31 compat32 compat40 compat41 compat42 compat43 compat44 direxpand dirspell dotglob execfail expand_aliases extdebug extglob failglob globstar gnu_errfmt histappend histreedit histverify huponexit inherit_errexit lastpipe lithist localvar_inherit localvar_unset login_shell mailwarn no_empty_cmd_completion nocaseglob nocasematch noexpand_translation nullglob progcomp_alias restricted_shell shift_verbose varredir_close xpg_echo"
@@ -474,7 +474,7 @@ auto_configure()
     echo "auto_configure requires prefix to be defined !"
     exit 1
   fi
-  catch_log configure.log "cd ${PACKAGE_DIR} ; ./configure $* --prefix=${PREFIX}"
+  catch_log configure.log "cd ${PACKAGE_DIR} ; ./configure $@ --prefix=${PREFIX}"
 }
 
 #------------------------------------------------------------
@@ -625,7 +625,7 @@ start_phase()
 
   echo ""
   echo "Build process aborted (by request) before '$1' phase"
-  echo "You may continue the process using '${ME} --build ${1}- ${TARGET}'"
+  echo "You may continue the process using '${SCRIPT} --build ${1}- ${TARGET}'"
   echo ""
   exit 0 # This is not an error
 }

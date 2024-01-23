@@ -11,18 +11,21 @@ CATCH_LOGFILE=
 # %2... command
 catch_log()
 {
-  local DEBUG=N
-  [ "$1" = "-d" ] && DEBUG=Y && shift
+  local _debug=N
+  
+  [ "$1" = "-d" ] && _debug=Y && shift
     
   CATCH_LOGFILE="${LOGDIR}/$1"
   shift
-  if [ $DEBUG = N ]
+  if [ ${_debug} = N ]
   then
-    ( eval "$@" > "${CATCH_LOGFILE}" 2>&1 )
+    ( eval "$@" > "${CATCH_LOGFILE}" 2>&1 ) || return $?
   else
     ( eval "$@" 2>&1 ) | tee "${CATCH_LOGFILE}"
+    local _status=${PIPESTATUS[0]}
+    [ ${_status} -ne 0 ] && return ${_status}
   fi
-  CATCH_LOGFILE=""  
+  CATCH_LOGFILE=""
 }
 
 #-----------------------------------------------------------------------------
