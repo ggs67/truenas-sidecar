@@ -9,6 +9,7 @@ unset -f command_not_found_handle
 
 declare -r RUN_DIR="$PWD"
 CMD_ARGS=( "$@" )
+declare -r ORIG_CMD_ARGS=( "$@" )
 declare -r SCRIPT="$0" # Get calling script
 declare -r ME=$(basename "$SCRIPT")
 DIR=$(dirname "$SCRIPT")
@@ -25,15 +26,20 @@ declare -r BUILDERDIR="${DIR}/builders.d"
 declare -r LOGROOT="${DIR}/logs"
 declare -r PACKAGEROOT="${DIR}/packages"
 declare -r DISTRIBUTEDIR="${DIR}/distribute.d"
+declare -r PERSISTENT_STORE_DIR="${DIR}/persist.d"
+declare PERSISTENT_VARS=( PERSISTENT_VARS LINK ARCHIVE PACKAGE_TYPE PACKAGE_DIR )
 
 declare -r SHELL_ENABLED_OPTS="checkwinsize cmdhist complete_fullquote extquote force_fignore globasciiranges globskipdots hostcomplete interactive_comments patsub_replacement progcomp promptvars sourcepath"
 declare -r SHELL_DISABLED_OPTS="autocd assoc_expand_once cdable_vars cdspell checkhash checkjobs compat31 compat32 compat40 compat41 compat42 compat43 compat44 direxpand dirspell dotglob execfail expand_aliases extdebug extglob failglob globstar gnu_errfmt histappend histreedit histverify huponexit inherit_errexit lastpipe lithist localvar_inherit localvar_unset login_shell mailwarn no_empty_cmd_completion nocaseglob nocasematch noexpand_translation nullglob progcomp_alias restricted_shell shift_verbose varredir_close xpg_echo"
 SHELL_OPTS_STACK=()
 
+BUILD_NEED_RESTART=N
+
 PACKAGE_DIR=""
 VERBOSE=0
 
-declare -r BUILD_PHASE_LIST="prepare,config,build,install"
+declare -r BUILD_PHASE_LIST="prepare,prerequisites,config,build,install"
+declare -r FIRST_BUILD_PHASE=$( cut -f 1 -d , <<<${BUILD_PHASE_LIST} )
 
 # If we are a sub process of this script, we assume BUILD_ALL request (i.,e. ignore any --all option)
 ps --pid $PPID -h -o cmd | fgrep -q "${ME}" 2>/dev/null && declare -r BUILD_ALL=Y || declare -r BUILD_ALL=N
@@ -109,9 +115,10 @@ DEFAULT_BUILD_PHASE=${DEFAULT_BUILD_PHASE:-build}
 check_value_in DEFAULT_BUILD_PHASE "${BUILD_PHASE_LIST}"
 
 need_directory "${PACKAGEROOT}"
+need_directory "${PERSISTENT_STORE_DIR}"
 
 # Default build phases
-BUILD_PHASES=( prepare ${DEFAULT_BUILD_PHASE} )
+BUILD_PHASES=( ${FIRST_BUILD_PHASE} ${DEFAULT_BUILD_PHASE} )
 
 #-----------------------------------------------------------------------------
 list_builders()
@@ -162,6 +169,7 @@ parse_opt_build()
 }
 
 #-----------------------------------------------------------------------------
+BUILD_RESTART=N
 parse_build_cmd()
 {
 local OPT
@@ -441,8 +449,8 @@ snap_install()
 #------------------------------------------------------------
 install_packages()
 {
-  ( sudo apt install -y "$@" )
-  Establish # For some reason above command disables trap
+  sudo apt install -y "$@"
+  Establish # For some reason above command may disables trap
 }
 
 #------------------------------------------------------------
@@ -465,6 +473,14 @@ auto_configure()
     exit 1
   fi
   catch_log configure.log "cd ${PACKAGE_DIR} ; ./configure $* --prefix=${PREFIX}"
+}
+
+#------------------------------------------------------------
+# make package using make with passed argument
+make_deps()
+{
+  echo "resolving package deps in ${PACKAGE_DIR}..."
+  catch_log make_deps.log "cd ${PACKAGE_DIR} ; make deps"
 }
 
 #------------------------------------------------------------
@@ -571,6 +587,7 @@ unset 'CMD_ARGS[0]'
 declare -r BUILDER="build_${TARGET}"
 declare -r BUILDER_SCRIPT="${BUILDERDIR}/${BUILDER}.sh"
 declare -r BUILDER_CONFIG="${CONFDIR}/${BUILDER}.conf"
+declare -r PERSISTENT_STORE="${PERSISTENT_STORE_DIR}/${BUILDER}.store"
 
 declare -r LOGDIR="${LOGROOT}/${BUILDER}"
 [ ! -d "$LOGDIR" ] && mkdir "$LOGDIR"
@@ -600,6 +617,7 @@ fi
 #-----------------------------------------------------------------------------
 start_phase()
 {
+  declare -g BUILD_PHASE="$1"
   list_item_since "${BUILD_PHASE_LIST}" "$1" "${BUILD_PHASES[0]}" || return 1
   list_item_until "${BUILD_PHASE_LIST}" "$1" "${BUILD_PHASES[1]}" && return 0
 
@@ -610,44 +628,140 @@ start_phase()
   exit 0 # This is not an error
 }
 
+#-----------------------------------------------------------------------------
+need_restart()
+{
+  [ "${BUILD_PHASE}" != "prerequisites" ] && echo "ERROR: need_restart is only allowed in prerequisites phase" >&2 && exit 1
+  verbose 1 "build restart requested"
+  BUILD_NEED_RESTART=Y
+}
+
+#-----------------------------------------------------------------------------
+purge_persist()
+{
+  [ -f "${PERSISTENT_STORE}" ] && rm -f "${PERSISTENT_STORE}"
+  make_persist
+}
+
+#-----------------------------------------------------------------------------
+make_persist()
+{
+  [ -f "${PERSISTENT_STORE}" ] && return 0
+  echo "#!/usr/bin/env bash" > "${PERSISTENT_STORE}"
+}
+
+#-----------------------------------------------------------------------------
+# %1... : var defs
+persist()
+{
+  [ ! -f "${PERSISTENT_STORE}" ] && touch "${PERSISTENT_STORE}"
+  while [ -n "$1" ]
+  do
+    echo "$1" >> "${PERSISTENT_STORE}"
+    shift
+  done  
+}
+
+#-----------------------------------------------------------------------------
+# %1... : var
+add_persist_vars()
+{
+  while [ -n "$1" ]
+  do
+    [[ " ${PERSISTENT_VARS[*]} " =~ [[:space:]]$1[[:space:]] ]] && shift && continue
+    PERSISTENT_VARS+=( $1 )
+    shift
+  done
+}
+
+#-----------------------------------------------------------------------------
+save_vars()
+{
+local _v _e
+  
+  purge_persist
+  for _v in ${PERSISTENT_VARS[*]}
+  do
+    eval [ -z \"\${$_v+x}\" ] && continue # Variable unset
+    declare -p ${_v} >> "${PERSISTENT_STORE}"
+  done
+}
+
+
 #################################################################################
 
 title "" "Building $TARGET" ""
 
+if [ "${BUILD_PHASES[0]}" != "${FIRST_BUILD_PHASE}" ]
+then
+  echo "  resuming build process at ${BUILD_PHASES[0]}"
+  [ -f "${PERSISTENT_STORE}" ] && echo "loading saved variables..." && source "${PERSISTENT_STORE}"
+fi
+
+#--------------------------------------
 if start_phase prepare
 then  
   title2 "Preparing $TARGET"
+  purge_persist
   Establish
   package_prepare
+  save_vars
 fi
 
-if start_phase config
+#--------------------------------------
+if start_phase prerequisites
 then  
   if isFunction package_prerequisites
   then
     title2 "Installing/preparing prerequisites for $TARGET"
     Establish
     package_prerequisites
+    Establish
+    save_vars
   fi
+fi
 
+if [ "${BUILD_NEED_RESTART}" = "Y" ]
+then
+  # Note we cannot append --build because it would be a builder option, so we have to prepend it
+  # and thus delete any --b|--build in th eoriginal arguments
+  ARGS=( "${ORIG_CMD_ARGS[@]}" )
+  delete_option_from_array ARGS "-b" 1
+  delete_option_from_array ARGS "--build" 1
+  verbose 1 "restarting build script upon builder request"
+  verbose 2  bash -i "${SCRIPT}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
+  save_vars
+  exec bash -l -i "${SCRIPT}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
+  echo "BUG: This line should never be reached !!!"
+  exit 0
+fi
+
+#--------------------------------------
+if start_phase config
+then  
   if isFunction package_config
   then
     title2 "Configuring $TARGET"
     Establish
     package_config
+    save_vars
   fi
 fi
-
+   
+#--------------------------------------
 if start_phase build
 then  
   title2 "Building $TARGET"
   Establish
   package_build
+  save_vars
 fi
 
+#--------------------------------------
 if start_phase install
 then  
   title2 "Preparing $TARGET deployment..."
   Establish
   package_install
+  save_vars
 fi

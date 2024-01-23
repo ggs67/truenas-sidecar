@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+#---------------------------------------------------------------------
+# %1 : array variable
+# %2 : item
+delete_item_from_array()
+{
+  eval $1=\( \"\${$1[@]/$2}\" \)
+}
+
+#---------------------------------------------------------------------
+# function used to remove an option qith its potential parameters from
+# an array containing command line options and parameters
+#
+# %1 : variable
+# %2 : option
+# %3 : argument count (default=0)
+delete_option_from_array()
+{
+  local _o _n=() _i _skip=0
+
+  eval _o=( \"\${$1[@]}\" )
+
+  for _i in "${_o[@]}"
+  do
+    [ ${_skip} -gt 0 ] && _skip=$((_skip-1)) && continue
+    [ "${_i}" = "$2" ] && _skip=${3:-0} && continue
+    _n+=( "${_i}" )
+  done
+  eval $1=\( \"\${_n[@]}\" \)
+}
