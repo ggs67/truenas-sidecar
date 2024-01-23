@@ -29,7 +29,7 @@ package_prepare()
 package_prerequisites()
 {
   install_packages acl attr autoconf automake dnsmasq-base git libacl1-dev libcap-dev liblxc1 libsqlite3-dev libtool libudev-dev liblz4-dev libuv1-dev make pkg-config rsync squashfs-tools tar tcl xz-utils ebtables
-  # missing: liblxc-dev
+  install_packages lxc-dev
   snap_install --classic go
   need_restart
   install_packages lvm2 thin-provisioning-tools

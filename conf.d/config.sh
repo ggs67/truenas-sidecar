@@ -22,7 +22,7 @@ DST_GROUP=admin
 # manually spcifying the phase
 # prepare | config | build | install
 DEFAULT_BUILD_PHASE=build
-#-> check_value_in {} "prepare,config,build,install"
+#-> check_value_in {} "${BUILD_PHASE_LIST}"
 
 # Enbale Backup of current state of deploymentares on NAS
 # Y = Enable
@@ -73,7 +73,7 @@ TRUENAS_BACKUP_VERSIONS=5
 #          files resulting in data/functionality loss.
 #
 #          This can be avoided with DEPLOY_CONFIG_KEEP=Y (see documentation for more information)
-DEPLOY_CONFIG_KEEP=N
+DEPLOY_CONFIG_KEEP=Y
 #-> check_yes_no
 
 # The following setting instructs the deployment process not to expect any site-specific

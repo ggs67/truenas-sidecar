@@ -26,12 +26,40 @@ local _sep=${3:-${GGLIB_DEFAULT_LIST_SEP}}
 # %2 : word
 # %3 : var (for index)
 # %4 : sep (optional)
+#
+# return 1-based index
 index_of()
 {
 local _sep=${4:-${GGLIB_DEFAULT_LIST_SEP}}
   list_contains "$1" "$2" "$4" || error "list does not contain word '$2'"
 
-  eval $3=$( awk -F "${_sep}" -v s="$2" '{for(i=1;i<=NF;i++)if($i==s){print i-1;exit;}}{print "unknown"}' <<<$1 )
+  eval $3=$( awk -F "${_sep}" -v s="$2" '{for(i=1;i<=NF;i++)if($i==s){print i;exit;}}{print "unknown"}' <<<$1 )
+}
+
+#--------------------------------------------------------------------
+# %1 : list
+# %2 : index
+# %3 : optional separator (default=',')
+#
+# Ouput: stdout
+get_list_item()
+{
+  cut -f $2 -d ${3:-,} <<< "$1"
+}
+
+#--------------------------------------------------------------------
+# Get item after word in list
+# %1 : list
+# %2 : word
+# %3 : optional separator (default=',')
+#
+# output: stdout
+get_list_item_after()
+{
+local _i
+  index_of "$1" "$2" "_i" "$3"
+  [ "${_i}" = "unknown" ] && return 0
+  get_list_item "$1" $((_i+1)) "$3"
 }
 
 #--------------------------------------------------------------------

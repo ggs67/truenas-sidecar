@@ -27,7 +27,7 @@ declare -r LOGROOT="${DIR}/logs"
 declare -r PACKAGEROOT="${DIR}/packages"
 declare -r DISTRIBUTEDIR="${DIR}/distribute.d"
 declare -r PERSISTENT_STORE_DIR="${DIR}/persist.d"
-declare PERSISTENT_VARS=( PERSISTENT_VARS LINK ARCHIVE PACKAGE_TYPE PACKAGE_DIR )
+declare PERSISTENT_VARS=( BUILD_PHASE PERSISTENT_VARS LINK ARCHIVE PACKAGE_TYPE PACKAGE_DIR )
 
 declare -r SHELL_ENABLED_OPTS="checkwinsize cmdhist complete_fullquote extquote force_fignore globasciiranges globskipdots hostcomplete interactive_comments patsub_replacement progcomp promptvars sourcepath"
 declare -r SHELL_DISABLED_OPTS="autocd assoc_expand_once cdable_vars cdspell checkhash checkjobs compat31 compat32 compat40 compat41 compat42 compat43 compat44 direxpand dirspell dotglob execfail expand_aliases extdebug extglob failglob globstar gnu_errfmt histappend histreedit histverify huponexit inherit_errexit lastpipe lithist localvar_inherit localvar_unset login_shell mailwarn no_empty_cmd_completion nocaseglob nocasematch noexpand_translation nullglob progcomp_alias restricted_shell shift_verbose varredir_close xpg_echo"
@@ -38,8 +38,10 @@ BUILD_NEED_RESTART=N
 PACKAGE_DIR=""
 VERBOSE=0
 
-declare -r BUILD_PHASE_LIST="prepare,prerequisites,config,build,install"
-declare -r FIRST_BUILD_PHASE=$( cut -f 1 -d , <<<${BUILD_PHASE_LIST} )
+declare -r BUILD_PHASE_LIST="prepare,prerequisites,config,build,saveconfig,install,deploy,restoreconfig"
+declare -r FIRST_BUILD_PHASE=${BUILD_PHASE_LIST%%,*}
+declare -r LAST_BUILD_PHASE=${BUILD_PHASE_LIST##*,}
+BUILD_PHASE=none
 
 # If we are a sub process of this script, we assume BUILD_ALL request (i.,e. ignore any --all option)
 ps --pid $PPID -h -o cmd | fgrep -q "${ME}" 2>/dev/null && declare -r BUILD_ALL=Y || declare -r BUILD_ALL=N
@@ -160,8 +162,8 @@ parse_opt_build()
     local _start=prepare
     local _end="$1"
   fi
-  [ -z "$_start" ] && _start=prepare
-  [ -z "$_end" ] && _end=install
+  [ -z "$_start" ] && _start=${FIRST_BUILD_PHASE}
+  [ -z "$_end" ] && _end=${LAST_BUILD_PHASE}
   check_value_in _start "${BUILD_PHASE_LIST}" "'${_start}' is invalid value for -b|--build"
   check_value_in _end   "${BUILD_PHASE_LIST}" "'${_end}' is invalid value for -b|--build"
   BUILD_PHASES=( $_start $_end )
@@ -314,7 +316,7 @@ get_github()
 # PACKAGE_TYPE=archive
 download_archive() 
 {
-  pushd .
+  pushd . >/dev/null
   cd "${PACKAGEROOT}"
   parse_func_options "download_archive" "N=new" "$@"
   set -- "${OPT_ARGS[@]}"
@@ -333,7 +335,7 @@ declare -g PACKAGE_TYPE=archive
     OPTS="-N"
   else
     OPTS="-O ${ARCHIVE}" # cannot use -N
-    [ -f "${ARCHIVE}" ] && popd && return 0 # ...so we simply do not download existing
+    [ -f "${ARCHIVE}" ] && popd >/dev/null && return 0 # ...so we simply do not download existing
   fi
 
   [ -z "$ARCHIVE" ] && echo "no archive name in download_archive()" && exit 1
@@ -346,7 +348,7 @@ declare -g PACKAGE_TYPE=archive
   #else
   #  echo "Keeping existing $ARCHIVE"
   #fi
-  popd
+  popd >/dev/null
 }
 
 #------------------------------------------------------------
@@ -432,10 +434,10 @@ local github=N
   if [ "${PACKAGE_TYPE}" = "archive" ]
   then    
     echo "Extracting..."
-    pushd .
+    pushd . >/dev/null
     cd "${PACKAGEROOT}"
     tar xf "$ARCHIVE"
-    popd
+    popd >/dev/null
   fi
 }
 
@@ -694,8 +696,24 @@ title "" "Building $TARGET" ""
 
 if [ "${BUILD_PHASES[0]}" != "${FIRST_BUILD_PHASE}" ]
 then
+  [ ! -f "${PERSISTENT_STORE}" ] && error "no persisten store found for ${BUILDER}, build must start at '${FIRST_BUILD_PHASE}' phase"
   echo "  resuming build process at ${BUILD_PHASES[0]}"
   [ -f "${PERSISTENT_STORE}" ] && echo "loading saved variables..." && source "${PERSISTENT_STORE}"
+fi
+
+# We have a build phase from last run
+if [ "${BUILD_PHASE}" != none ]
+then
+  _p=$( get_list_item_after "${BUILD_PHASE_LIST},end" "${BUILD_PHASE}" )
+  [ "${BUILD_PHASES[0]}" = "unknown" ] && BUILD_PHASES[0]="${_p}"
+  if ! list_item_until "${BUILD_PHASE_LIST}" "${BUILD_PHASE[0]}" "${_p}"
+  then
+    info "the prior run ended at phase '${BUILD_PHASE}'"
+    error "start phase could therefor be no more than '${_p}'"
+  fi
+  unset _p
+else
+  BUILD_PHASES[0]="${FIRST_BUILD_PHASE}"
 fi
 
 #--------------------------------------
@@ -731,7 +749,7 @@ then
   verbose 1 "restarting build script upon builder request"
   verbose 2  bash -i "${SCRIPT}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
   save_vars
-  exec bash -l -i "${SCRIPT}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
+  exec bash -l -i "${DIR}/${ME}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
   echo "BUG: This line should never be reached !!!"
   exit 0
 fi
@@ -757,6 +775,13 @@ then
   save_vars
 fi
 
+# Starting here we need the deployment part
+cd "${DIR}"
+source ext/deploy.sh
+
+#--------------------------------------
+start_phase saveconfig && deploy saveconfig
+
 #--------------------------------------
 if start_phase install
 then  
@@ -764,4 +789,12 @@ then
   Establish
   package_install
   save_vars
+  cd "${DIR}"
 fi
+
+#--------------------------------------
+start_phase deploy && deploy deploy
+
+#--------------------------------------
+start_phase restoreconfig && deploy restoreconfig
+
