@@ -236,13 +236,17 @@ deploy()
       [ ${DEPLOY_NO_SITE_CONFIG_FILES} = Y ] && OPT="${OPT} --existing"
       rsync -azhv ${OPT} -u -e ssh --info=copy --dry-run -i "${URI}:${TRUENAS_DST}/" "$SRC" | grep '^[>f]'| sed -E 's/^[>]f.+[[:space:]]//' | rsync -azhv -e ssh --files-from - "${URI}:${TRUENAS_DST}/" "${VAULT}"
 
-      heading1 "syncing back to staging area"
-      # NOTE: This only saves files also known in the staging area (regardless of DEPLOY_NO_SITE_CONFIG_FILES)
-      #       This is to avoid garbrage in the stagin area. The purpose of this sync is only meant as fallback
-      #       avoiding overwriting of user config files by the deployment. Deployment will however still
-      #       delete any site-specific config files which are then restored from the vault (saved below)
-      rsync -azhv --existing -u -e ssh --progress "${URI}:${TRUENAS_DST}/" "$SRC" 
-      
+      if [ ${DEPLOY_CONFIG_REVERSE_SYNC} = Y ]
+      then
+        heading1 "syncing back to staging area"
+        # NOTE: This only saves files also known in the staging area (regardless of DEPLOY_NO_SITE_CONFIG_FILES)
+        #       This is to avoid garbrage in the stagin area. The purpose of this sync is only meant as fallback
+        #       avoiding overwriting of user config files by the deployment. Deployment will however still
+        #       delete any site-specific config files which are then restored from the vault (saved below)
+        rsync -azhv --existing -u -e ssh --progress "${URI}:${TRUENAS_DST}/" "$SRC" 
+      else
+        heading1 "syncing back to staging area ${TTY_COLOR_RED}(disabled)${TTY_NORMAL}"
+      fi
 
       if [ ${DEPLOY_CONFIG_CLEANUP} = Y ]
       then
@@ -252,8 +256,14 @@ deploy()
         
       if [ ${DEPLOY_CONFIG_DUAL_SYNC} = Y ]
       then
-        echo "Re-syncing known config files..."
+        heading1 "Re-syncing known config files..."
         rsync --recursive --existing --verbose "${URI}:${TRUENAS_DST}/" "${VAULT}"
+      fi
+
+      if [ ${DEPLOY_CONFIG_TOUCH} = Y ]
+      then
+	heading1 "'Touching' all config vault files"
+	find "${VAULT}" -exec touch --no-create {} \;
       fi
     fi    
   return 0

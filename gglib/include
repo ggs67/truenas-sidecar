@@ -21,7 +21,7 @@ gglib_include()
     local _lib="$1"
     shift
     ( echo " ${GGLIB_INCLUDED} " | grep -F -q " ${_lib} " 2>/dev/null ) && continue # already included
-    echo "  including library $_lib..."
+    [[ "${VERBOSE}" =~ ^[0-9]+$ ]] && [ ${VERBOSE} -ge 9 ]  && echo "  including library $_lib..."
     GGLIB_INCLUDED="${GGLIB_INCLUDED} ${_lib}"
     source "${GGLIB_DIR}/l.d/${_lib}.lib"
   done

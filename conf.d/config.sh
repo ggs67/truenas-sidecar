@@ -102,7 +102,7 @@ DEPLOY_CONFIG_REVERSE_SYNC=Y
 # while  having the side effect of updating the concerned files creation time to the current
 # time.
 #
-DEPLOY_CONFIG_TOUCH=N
+DEPLOY_CONFIG_TOUCH=Y
 #-> check_yes_no
 
 # By default config syncing is done by checking which files have been changed since last

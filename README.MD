@@ -1,99 +1,7 @@
-1. [CAUTION - KNOWN MAJOR ISSUE](#caution---known-major-issue)
-1. [Introduction](#introduction)
-1. [Disclaimer](#disclaimer)
-	1. [Work in progress](#work-in-progress)
-	1. [Risks and possible Side Effects](#risks-and-possible-side-effects)
-	1. [Disclaimer of Warranty](#disclaimer-of-warranty)
-	1. [Disclaimer of Endorsement](#disclaimer-of-endorsement)
-1. [Introduction](#introduction)
-1. [What is TrueNAS-Sidecar ?](#what-is-truenas-sidecar-)
-1. [Limitations](#limitations)
-1. [Glossary of used terms](#glossary-of-used-terms)
-1. [How it works](#how-it-works)
-	1. [Build environment](#build-environment)
-	1. [Build user](#build-user)
-	1. [Build environment](#build-environment)
-	1. [Deployment areas](#deployment-areas)
-		1. [Package area](#package-area)
-		1. [Staging area](#staging-area)
-		1. [TrueNAS Sidecar](#truenas-sidecar)
-	1. [Sidecar builder directory structure](#sidecar-builder-directory-structure)
-		1. [Root directory](#root-directory)
-		1. [ext/](#ext)
-		1. [builders.d/](#buildersd)
-		1. [conf.d/](#confd)
-		1. [logs/](#logs)
-		1. [packages/](#packages)
-		1. [config_vault.d/](#config_vaultd)
-		1. [gglib/](#gglib)
-	1. [Prerequisites](#prerequisites)
-	1. [Deployment process](#deployment-process)
-		1. [Caution](#caution)
-			1. [Time zones](#time-zones)
-			1. [Time synchronization](#time-synchronization)
-			1. [Debian version mismatch](#debian-version-mismatch)
-			1. [Edited config files](#edited-config-files)
-		1. [Config file handling](#config-file-handling)
-			1. [Config file sources](#config-file-sources)
-			1. [Related challenges](#related-challenges)
-			1. [The handling process](#the-handling-process)
-				1. [DEPLOY_CONFIG_KEEP (Y/N, recommended=Y)](#deploy_config_keep-yn-recommendedy)
-				1. [DEPLOY_NO_SITE_CONFIG_FILES (Y/N, recommended=N)](#deploy_no_site_config_files-yn-recommendedn)
-				1. [DEPLOY_CONFIG_REVERSE_SYNC (Y/N)](#deploy_config_reverse_sync-yn)
-				1. [DEPLOY_CONFIG_TOUCH](#deploy_config_touch)
-			1. [Config hint file](#config-hint-file)
-		1. [General process](#general-process)
-		1. [Detailed deployment steps](#detailed-deployment-steps)
-			1. [Library gathering](#library-gathering)
-			1. [make_setup_path.sh](#make_setup_pathsh)
-			1. [Backup of the existing sidecar](#backup-of-the-existing-sidecar)
-			1. [Three-way syncing of configuration filers](#three-way-syncing-of-configuration-filers)
-			1. [Deployment](#deployment)
-	1. [Configuration](#configuration)
-		1. [Part 1: Mandatory config area](#part-1-mandatory-config-area)
-		1. [Part2: Optional config area](#part2-optional-config-area)
-		1. [Part 3: Static area](#part-3-static-area)
-	1. [SSH](#ssh)
-1. [Build files](#build-files)
-	1. [build_{package}.*](#build_package)
-		1. [conf.d/build_{package}.conf](#confdbuild_packageconf)
-		1. [builders.d/build_{package}.sh](#buildersdbuild_packagesh)
-		1. [Builder callback functions](#builder-callback-functions)
-			1. [builder_default_config(config-file) [optional]](#builder_default_configconfig-file-optional)
-			1. [Main building functions](#main-building-functions)
-				1. [package_prepare()](#package_prepare)
-				1. [package_prerequisites() [optional]](#package_prerequisites-optional)
-				1. [package_config() [optional]](#package_config-optional)
-				1. [package_build()](#package_build)
-				1. [package_install()](#package_install)
-			1. [package_config_files()](#package_config_files)
-	1. [build.sh](#buildsh)
-		1. [Variables](#variables)
-			1. [CMD_ARGS [TEMP]](#cmd_args-temp)
-			1. [SCRIPT](#script)
-			1. [ME](#me)
-			1. [DIR](#dir)
-			1. [RUN_DIR](#run_dir)
-			1. [BUILDER](#builder)
-			1. [TARGET](#target)
-			1. [BUILDER_CONFIG](#builder_config)
-			1. [BUILDER_SCRIPT](#builder_script)
-			1. [LOGDIR](#logdir)
-			1. [SYNOPSIS [OPT]](#synopsis-opt)
-			1. [SHELL_ENABLED_OPTS / SHELL_DISABLED_OPTS](#shell_enabled_opts--shell_disabled_opts)
-			1. [CATCH_LOGFILE [OPT, DYN]](#catch_logfile-opt-dyn)
-			1. [VERBOSE [DYN, default=0]](#verbose-dyn-default0)
-			1. [BUILD_ALL [INTERNAL]](#build_all-internal)
-		1. [Functions](#functions)
-			1. [usage("{error-msg}")](#usageerror-msg)
-			1. [usage_info() [CB]](#usage_info-cb)
-			1. [catch() [CB]](#catch-cb)
-1. [Installed package usage](#installed-package-usage)
-	1. [Command variables and aliases](#command-variables-and-aliases)
-1. [Roadmap](#roadmap)
-
 
 # CAUTION - KNOWN MAJOR ISSUE
+
+***`NOTE:`*** I leave this point for now as it is an important thought. Actually the current version implements config file handling using multiple three-way syncs which should do the trick. HOWEVER this is an early stage of the implementation, and there are also situations which are not covered (for. ex. but not only, when using --purge)
 
 The current version of the sidecar will result in the loss of modified configuration files in the NAS sidecar upon the next deployment.  
 
@@ -111,11 +19,11 @@ Project start: 02-JAN-2024
 
 ANY AND EVERY USE OF THIS WORK IMPLIES THE PRIOR READ AND COMPREHENSION OF THIS COMPLETE DISCLAIMER SECTION WITH ALL ITS SUB-SECTIONS.
 
-Before going any further, let me tell you that I develop these scripts for my own needs while keeping them as general and open as possible to provide them as-is for reference and use to others. 
+Before going any further, let me tell you that I develop these scripts for my own needs while keeping them as general and open as possible to provide them as-is for reference and use to others. Over the time the project has evolved from the initial quick-hack using a collection of scripts to a rather clean approach with mainly one single integrated script and callbacks.
 
 ## Work in progress
 
-As for now this project is work in progress, which means that behavior, layout, names, features, options and others are subject to important changes  over time. Many aspects are also not yet or not yet correctly (due to changes) documented
+As for now this project is work in progress, which means that behavior, layout, names, features, options and others are subject to important changes  at any time. Many aspects are also not yet or not yet correctly (also but not only due to changes) documented
 
 In this state this project is not meant to be used in any environment except pure testing environments. The main purpose of providing this work at this stage is to allow for comments.
 
@@ -124,17 +32,18 @@ Fundamental changes this project went already through:
 - build.sh now being the main build script dispatching to builder's functions, initially it was a library of functions and variables sourced from each builder
 - build.sh general purpose functions moved to a bash function library (gglib) and split into modules that can be loaded upon need (similar to python's `import`).
 - build_all.sh integrated into build.sh
+- deploy.sh integrated into build.sh
 
 
 ## Risks and possible Side Effects
 
 While this work is performed with high care, risks and side-effects cannot be and are not excluded. These can include, but are not limited to, destroying the integrity of the system used for developing and/or building  as well as of the target TrueNAS environment(s) including their data. The former risk may be reduced by adopting the recommended way of using a separate virtual machine for this sole purpose and using a non-superuser for building and deployment. The latter risk depending not only on this work but also on the packages built and installed requires the user to progress with care.
 
-We assume as well that the destination directory on the TrueNAS server where the packages are to be installed is a dataset (or on a dataset) separate from any TrueNAS system partition. Usually such a path would be in the /mnt directory, like for example /mnt/data/opt)
+We assume as well that the destination directory on the TrueNAS server where the packages are to be installed is a dataset (or on a dataset) separate from any TrueNAS system partition. Furthermore the target directory should solely be used for the sidecar. Usually such a path would be in the /mnt directory, like for example /mnt/data/opt)
 
-I do explicitly point out that, while the goal of the sidecar project is to avoid any altering of the core TrueNAS installation I cannot exclude that some (even bundled) builders still generate packages that could place files within the TrueNAS system when run.
+I do explicitly point out that, while the goal of the sidecar project is to avoid any altering of the core TrueNAS installation I cannot exclude that some (even bundled) builders still generate packages that could place or alter files within the TrueNAS system when run.
 
-An example of such a potential risk is python, where for example pip could potentially (while not expected) install downloaded modules in a system path. To avoid such side effects is actually also the main reason why the installation path on the development system should match the installation path on the TrueNAS server.
+An example of such a potential risk is python, where for example pip could potentially (while not expected) install downloaded modules in a system path. Avoiding such side effects is actually also the main reason why the staging path on the development system should match the installation path on the TrueNAS server.
 
 The above gives you only an overview of some of the potential risks and side effects that may occur using this work. 
 
@@ -158,9 +67,21 @@ Officially, TrueNAS does not allow installation of additional packages. On the o
 While there are workarounds available allowing to bypass this limitation, I prefer to stick to the rules as closely as possible. One may believe for example that adding a pure application package like ImageMagick may cause no harm, but dependencies may well do so and are quickly overseen.  
 The problems that could quickly arise by forcefully installing Linux packages could include (but not limited to) version and expectation mismatches. The latter means that TrueNAS may assume facts about the installation, well knowing it has full control of it while the installation from different sources may break those assumptions.
 
+# Motivation
+
+The motivation for this project, for me, was the migration form a QNap NAS to a custom TrueNAS. On my old NAS I had a set of python 3 scripts to manage videos which require a number python modules, and a script using ImageMagick to automatically handle and assemble scanned documents.
+
+On my old NAS I also used a LXD container with bacula to backup my different servers around. My TRUENAS running on Proxmox which in turn now runs the bacula container, it does not have direct access to the TrueNAS storage. So the idea is to have the bacula storage daemon run on TrueNAS to avoid storage sharing overhead.
+
+While python3 is available in TrueNAS it does not allow for additional module installations  through `pip`. Manual installation may work, but difficult to maintain and obviously also not meant to be done.
+
+This is the reason why the project includes builders for python 3, ImageMagick and bacula with the latest having options on which parts to include. Being a big fan of Emacs, on Linux, I also did a builder for it.
+
+`***Note:***` Another motivation point is also that IMHO the TrueNAS Scale App concept is a pain in the ass. With all the app parameters being somewhat opaque and often badly or not at all documented you never know if it is correctly configured, even if it works. TrueNAS shoudl here really have a glance to its competitors on how to implement apps. (my 5 cents)
+
 # What is TrueNAS-Sidecar ?
 
-To avoid the problems named above I decided to "sidecar" install packages from source code, which means installation in some path outside of the TrueNAS system (usually on a ZFS dataset).
+To avoid the problems named above I decided to "sidecar" install packages from source code, which means installation in some path outside of the TrueNAS system (preferably on a ZFS dataset).
 
 For this reason I created a set of scrips assuring the following tasks:
 
@@ -169,14 +90,16 @@ For this reason I created a set of scrips assuring the following tasks:
 * Check for libraries required by the package and package them as well if not available in TrueNAS
 * Install the packages onto TrueNAS (actually copy, not altering the package database)
 * provide a script which defines path environment variables to the packages
+* handle config files
 
 # Limitations
 
-TrueNAS sidecar is limited to user-space software only, kernel modules are currently not supported. There are currently also no plans to change this because of the higher potential of impact on TrueNAS.
+TrueNAS sidecar is limited to user-space software only, kernel modules for instance are currently not supported. There are currently also no plans to change this because of the higher potential of impact on TrueNAS.
 
 # Glossary of used terms
 
 - ***Build Environment:***  the build environment is the host or virtual machine used for preparing (eg. building) the packages to be "installed" in the NAS sidecar. It is highly recommended to use a dedicated virtual machine for this purpose
+- ***Sidecar home:*** is the root directory of this project
 - ***NAS:*** speaking of NAS (or TrueNAS) we refer to the target NAS on which the sidecar packages are to be installed.
 - ***Package:*** while actual linux packages are not supported for deployment by the project, we still call each software to be build and installed as a package. Each package has its own build script. It is also not recommended to bundle multiple software within a single package (f.ex. bundle a database server with a software requiring it), but separate them in different bundles. The project is currently not managing any such dependencies but eventually will.
 - ***Sidecar:*** the word sidecar can be tricky but should be clear within its context. Usually when speaking of "the sidecar", it refers to the directory tree of the sidecar installation on the NAS. While, when referring to the building environment we usually use "sidecar project" or "sidecar builder", when speaking of the files and directories of the downloaded TrueNAS/sidecar github project. So when speaking of the "github builder root" it does not refer to the physical root (/) but the root directory of the sidecar project (usually /..../sidecar, for ex. /home/dev/sidecar)
@@ -189,14 +112,18 @@ First of all we need a separate build environment, as TrueNAS cannot be used to 
 
 The linux version can be obtained on TrueNAS with `cat /etc/os-release`
 
-It is best to limit this hosts use to TrueNAS package building only.
+It is best to limit this host's use to TrueNAS package building only.
 
 ## Build user
 
 The next step is to create a non-superuser user which does the actual builds. Note that the scripts are restricted to run  in non-root (not root and not UID or GID = 0) user process and will abort if run under root.
 
 As the scripts are to perform some privileged tasks like creating directories outside of the build environment (matching the destination on TrueNAS)  and installing packages needed for the builds
-it must be allowed to use sudo. This is could be achieved for example by adding it to the sudo group.
+it must be allowed to use sudo. This is could be achieved for example by adding it to the sudo group (at least with the default sudoers config).
+
+```
+> **_NOTE:_**  it is HIGHLY DISCOURAGED to run these scripts using a superuser to avoid altering of system files and also allow to trap and correct such bogous configurations.
+```
 
 ## Build environment
 
@@ -205,7 +132,8 @@ Setting up the build environment is as simple as copying the file tree from this
 Which is easiest achieved by using `git clone https://github.com/ggs67/truenas-sidecar.git`
 
 ## Deployment areas
-Sidecar uses 3 distinct areas to store files at different stages during the deployment. 
+
+Sidecar uses several distinct areas to store files at different stages during the deployment. 
 
 These are described in the next sections in order of use.
 
@@ -213,27 +141,48 @@ These are described in the next sections in order of use.
 
 The package area is contained in the package directory in the sidecar project root. This area, by default, receives the downloaded archives and the build directories for the different packages.
 
-For custom builders not relying on sidecar functions for download and preparation (i.e. extraction,...) it is highly recommended to stick on using this area as intended, i.e. create a build subdirectory for the target package
+For custom builders not relying on sidecar functions for download and preparation (i.e. extraction,...) it is highly recommended to stick on using this area as intended, i.e. create a build subdirectory for the target package. 
+
+Such custom builders also need to define a number of variables (like ARCHIVE, PACKAGE_DIR, PACKAGE_TYPE,...) in order to stay compatible with the build process
 
 ### Staging area
+
 Once the package is build it can be staged, i.e. installed into the staging area.  It is very important (and also currently enforced) that the staging area path and the final sidecar path on the NAS are identical. This because the build process may hardcode some paths into the software.
 
+Currently the script enforces the staging/sidecar path to be within /mnt
+
+Therefore a superuser is required to setup the staging area in the build environment. It is recommended that the complete path to the staging area is owned by root with the build user only having read-execute access to the directories, except for the final, actual sidecar directory which should be owned by the build user.
+
 ### TrueNAS Sidecar
+
 This the actual destination of the software, i.e. a folder on the NAS which contains the sidecar files, and ONLY the sidecar files
 
 The project currently enforces the sidecar area to be below the /mnt directory as it is expected to be on some ZFS dataset managed by TrueNAS
 
-## Sidecar builder directory structure
+`***TODO:***` : let /mnt to be configured
 
+### Config vault
+
+The config vault is a directory in the sidecar home (`config_vault.d`) which is used to save edited configuration files from the sidecar to avoid overwriting of those.
+
+## Sidecar builder directory structure
 
 ### Root directory
 Contains the main scripts to manage the building and deployment process
 
-### ext/
+The directories below are marked with the following attributes to show their use:
+- [static] : directory containing project scripts and/or data which is static and only meant to be altered by sidecar project developers
+- [editable]: directory with user editable config files.
+- [add]: directory where more files may be added by the user, while the project provided files are not meant to be altered
+- [read-only]: as opposed to [static] these files are altered by the build process but ment only to be read by the user (f.ex. log files)
+- [dynamic]: this directory is (or may be) altered by the build processes. It's content is however mostly considered opaque to the user and user interaction with it should be limited to what this document explicitly allows. 
+
+### ext/ [static]
 
 This directory contains additional scripts internally used by the project and not meant to be used directly
 
-### builders.d/
+### builders.d/ [add]
+
 Contains the builder scripts (`build_{package}.sh`)  for the different packages. Currently the following builders are available:
 - python
 - imagick
@@ -242,40 +191,47 @@ Contains the builder scripts (`build_{package}.sh`)  for the different packages.
 
 Note that packages can be build explicitly one by one or all at once. In the latter case builders can be enabled and disabled. Explicit builds are always executed when requested, even if the builder is disabled.
 
-### conf.d/
+### conf.d/ [config]
 This directory contains man configuration file (`config.sh`) and the optional builder configuration filles (`build_{package}.conf`). Most builders will have at least a  minimal configuration file to configure the built version number. Some however download a constant link always representing the latest version and thus may not use any config file at all. 
 
 Missing files (for builders needing one) are generated by the builder on the fly, using default values, on first build.
 
-### logs/
+### logs/ [read-only]
 
 During the building process some commands, like the build itself generate a mass of output possibly burying builder messages between them. For this reason such commands are automatically logged into separate log files which are stored in a per builder  directory under the logs directory. The content of these log files is automatically displayed in case of a detected error. Log files are retained after the build for reference.
 
-### packages/
+### packages/ [dynamic]
 This is the default directory for downloading and building the packages. Each package must use its own private directory (which is usually managed by functions provided by sidecar)
 
-### config_vault.d/
+The user could manually delete archives and/or package directories either because that package is not required anymore, or to force the download and/or extraction. In either case it is of course mandatory to start from the first phase (default start phase for --build) when deploying this package again.
+
+### config_vault.d/ [dynamic]
 Files contained in this directory are transferred to TrueNAS together with the build files. These files are 2-way synchronized during the deployment, to avoid that configuration files get unexpectedly overwritten. This process is highly configurable and will be explained in detail later in this document.
 
-### gglib/
-gglib is candidate for a separate repository later and contains a bash function library separated in different modules which can be imported as required (similar to python import).
+Interaction within this directory is usually not necessary and if so, needs to be performed with extreme care. Files should not be edited in this directory, but rather on the NAS. Files may be deleted from this directory if they are for sure not required on the NAS anymore (deinstalled package).
+
+### gglib/ [static]
+
+gglib is candidate for a separate repository later and contains a bash function library separated in different modules which can be imported as required (similar to python import). Since currently the library modules are developed as required by the project, we import all modules.
 
 ## Prerequisites
 
-Note that Debian may not install sudo by default, in which case manual installation of sudo via the root use is required `apt install sudo` before any further step
+Note that Debian may not install sudo by default, in which case manual installation of sudo via the root user is required (`apt install sudo`) before any further step
 
 After this you run the `prepare_environment.sh` script. This is only required once at first installation or update of the scripts. This script will install the required packages.
 
 In addition it will check the availability of required commands and suggest additional packages if missing. In that case you may re-run this script after the installation in order to make sure all tests will pass.
 
 ## Deployment process
+
 ### Caution
-There are a few possible pitfalls with sidecar installation. This document will document the steps which are done in an attempt to avoid them. Make sure you understand the pitfalls completely before any build and deployment to avoid data loss.
+
+There are a few possible pitfalls with the sidecar installation. This document will describe the steps which are done in an attempt to avoid them. Make sure you understand the pitfalls completely before any build and deployment to avoid data loss.
 
 The pitfalls are:
 
 #### Time zones
-While different timezones in the build environment and NAS should not impact the correct synchronization of the files as the underlying timestamps in UTC remain identical, there have been reports of exectely such issues with rsync. Such problems may also be injected (at least in theory) by explicit file "touching" and the related time conversions.
+While different timezones in the build environment and NAS should not impact the correct synchronization of the files as the underlying timestamps in UTC remain identical, there have been reports of exactely such issues with rsync. Such problems may also be injected (at least in theory) by explicit file "touching" and the related time conversions.
 
 As a result the current deployment sanity checks enforce the build environment and NAS to have the same time zone in order to proceed with the deployment
 
@@ -296,12 +252,14 @@ For a reliable synchronization it is mandatory that the interval between two con
 ```
 
 #### Debian version mismatch
-Since the sidecar runs using the TRUENAS Linux environment (mainly libraries, and especially the kernel library) it is very important that both the NAS and the build host are using the same Debian distribution version.
 
-While both hosts should also bee kept up-to-date in parallel (i.e. "apt update ; apt upgrade" run on both systems each time), small divergences are still possible, but these should usually not be an issue.
+Since the sidecar runs using the TRUENAS Linux environment (mainly libraries, and especially the kernel library) it is important that both the NAS and the build host are using the same Debian distribution version.
+
+While both hosts should also be kept up-to-date in parallel (i.e. "apt update ; apt upgrade" run on both systems each time), small divergences are still possible, but these should usually not be an issue.
 
 #### Edited config files
-Edited config files is a whole other level of complexity when it comes to pitfalls. This because there are multiple sources and scenarios of configuration file updates. This complexity deserves its own chapter (Config file handling).
+
+Edited config files is a whole other level of complexity when it comes to pitfalls. This because there are multiple sources and scenarios of configuration file updates. This complexity deserves its own chapter (Config file handling) below.
 
 ### Config file handling
 
@@ -314,40 +272,55 @@ In this context a config file is any file which has been or may be altered or ad
 - updated (i.e. edited) by the user
 - updated by installer
 	- always
+	- only if non-existent
 	- only if not edited (i.e. not newer than binary file)
 - provided by the user (i.e. site-specific config files not generated by the installer)
 
 #### Related challenges
+
 Each scenario has its own challenges that need to be addressed. But especially due to the build process being steered by the respective package and this is out of our control there is no 100% safety for config files. For this reason the deployment process offers the possibility to create backups prior to any deployment, and also to keep multiple versions of this backup, as well as an editable config hint file.
 
 #### The handling process
 
 If all options are enabled, the following course of actions is taken in order:
-1. Sync from the NAS to a vault, steered by the staging area (update) (this MUST BE done BEFORE the reverse sync)
+1. Sync from the NAS to the config vault, steered by the staging area (update) (this MUST BE done BEFORE the reverse sync)
 2. Reverse sync (update only) from the NAS to the staging area (only files existing in the staging area)
-3. Sync NAS sidecar again with vault checking for all files existing in the vault (to catch any site-specific files)
-4. Syncing files from the hint file to the vault
-5. stage the package(s)
-6. Sync back the vault to 
+3. Cleanup config vault
+4. Sync NAS sidecar again with vault checking for all files existing in the vault (to catch any site-specific files)
+5. Syncing files from the hint file to the vault
+6. stage the package(s)
+7. deploy
+8. Sync back the vault to the NAS sidecar
 
 The process is steered by the following configuration variables in config.sh
 
 ##### DEPLOY_CONFIG_KEEP (Y/N, recommended=Y)
+
 This is the master variable enabling the configuration file handling at all. If set to "N", which is highly discouraged, config files will not be saved and highly susceptible to be overwritten by subsequent deployments
 
 ##### DEPLOY_NO_SITE_CONFIG_FILES (Y/N, recommended=N) 
+
 If 'Y', this disables special handling of site-specific config files (i.e. files added by the user). This will result in deleting any such file. 
+
+In this context site-specific config files are files which have been added to the sidecar, and not initially deployed. I.e. files which were not exisitsng in the initial package installation.
 
 Setting this to 'N' is the safer option and absolutely required if site-specific config files are used, while a setting of 'Y' in the case such files are not used reduces the artefact files left behind by packages over time or when deinstalled.
 
-##### DEPLOY_CONFIG_REVERSE_SYNC (Y/N)
+##### DEPLOY_CONFIG_REVERSE_SYNC (Y/N, recommended=Y)
+
 Reverse sync is a fallback sync (i.e. an additional safety net) in order to avoid overwriting of
 config files on deployment in the first place. Overwritten config files should be recovered through the 3-way config syncs as well.
 
-Note that this setting does only sync back modified config files existing in the staging area
-(i.e. part of the initial package install). This in order to avoid artefacts.
+Reverse-sync updates any file in the staging area which has been altered on the NAS after the last deployment. This takes place  prior to the staging process.
 
-##### DEPLOY_CONFIG_TOUCH
+Note that this setting does only sync back modified config files existing in the staging area
+(i.e. part of the initial package install). This in order to avoid artefacts and other sync issues.
+
+##### DEPLOY_CONFIG_DUAL_SYNC} (Y/N, default=Y)
+
+Dual sync uses a second sync process from the NAS to the config vault, by syncing any file difference of any file present in the vault. This may catch updates missed in the 3-way sync, using the staging area as reference.
+
+##### DEPLOY_CONFIG_TOUCH (Y/N, default=N)
 If enabled (Y), each file in the config vault (wether retrieved in this run or before)  will be "touched" (i.e. get its timestamp set to current time) for in order to make sure it will be synced back to the NAS and also preselect it that way for the next config file sync, as it will be newer than any file in the staging area.
 
 The backside of the medal is that you will be unable to track the time of the last change 
@@ -356,31 +329,81 @@ The backside of the medal is that you will be unable to track the time of the la
 > **_TODO:_**  keep track of config file editing dates by using extended file attributes and a sentinal file. The sentinel file is created (touched) just after the deployment thus we know that any file with an mtime later than this file was modified by the user.
 ```
 
-#### Config hint file
+##### DEPLOY_CONFIG_CLEANUP (Y/N, default=N)
+
+If 'Y', this will cause any config file deleted in the NAS sidecar to be removed from the vault as well. If this setting is 'N' and a file present in the vault gets deleted on the NAS sidecar, the saved version will reappear upon next peployment.
+
+##### DEPLOY_CONFIG_HINTS (array of paths)
+```
+> **_TODO:_**  Thi s variable exists but is not yet implemented
+```
+
+This variable is an array of hints for configuration files. There are 2 types of entries:
+
+1. ***/absolute/path:*** an absolute path to a file or directory. Note that even though this is an absolute path it is interpreted as being relative to the sidecar root directory. Using the absolute path notiotion makes it mor readable as one is used to see `/etc/cfgdir/file.conf` but `ètc/cfgdir/file.conf` may be confusing.
+2. ***@path:*** in this case the path may be an absolute or relative path to a hint file. If a relative path is given, it is meant to be relative to the Truenas sidecar builder root directory.
+
+This variable is defining hints to be used by any package, while the package specific file `conf.d/build_<package>.cfg.hints` is used only for the given package.
+
+The content format of this array is identical to the config file, so see "Config hints" below for more information
+
+```
+> **_NOTE:_**  the hint file conf.d/build_<package>.cfg.hints is implicitely used and should not be included in this array
+```
+
+
+#### Config hints
+
+Config hints are defined globally through the DEPLOY_CONFIG_HINTS config variable (see above) or the package specific hint file `conf.d/build_<package>.cfg.hints`.
+
+Both can contain the same entry types, but in addition hint files can contain comments starting with a '#' . Note that comments must be on a separate line, inline comments are not supported.
+
+##### Config file or directory path
+
+`***Format:***` /absolute/path
+
+Config file or directory path MUST be specified as absolute path, even though it is interpreted as being relative to the sidecar root directory. The given file or directory is expected to be a config file and will be forcefully saved to the config vault.
+
+##### Hint file
+
+`***Format:***` @path
+
+Here the path following the '@' can be either relative or absolute and is a path on the build environment host. Relative paths will be interpreted as relative to the sidecar home.
+
+Each hint file can contain exactly the same entries as described in this section, i.e. also include other hint files
+
+##### General path format
+
+Paths following the rules described here above can inside of these constraints have wildcards allowing easy multiple selections.
 
 ```
 > **_TODO:_**  we may consider using extended file attributes to mark files as config files as well
 ```
 
 ### General process
-Once the  package build it can be installed in the local staging area, which should be the exact same path than on the destination NAS. During deployment all files in the staging area are copied to the destination NAS deployment directory (TRUENAS_DST)
+
+Once the  package build it can be installed in the local staging area, which should be the exact same path than on the destination NAS. During deployment all files in the staging area are copied to the destination NAS deployment directory (TRUENAS_DST).
 
 ### Detailed deployment steps
+
 #### Library gathering
-While the local development system does install all required libraries before building a package, these libraries may not be available on the destination NAS, and cannot be installed through normal process.
+
+While the local development system does install all required libraries before building a package, these libraries may not be available on the destination NAS, and cannot be installed through normal processes.
 
 The deployment process first builds a list of all shared libraries used by all binaries in the staging area. Then it checks the TRUENAS installation for libraries from this list that are available on the NAS and eliminates those from the list. The remaining libraries are then copied from the local system area top the staging area for deployment.
 
-The setup_path.sh script deployed as well, creates an LD_LIBRARY_PATH variable pointing to all library directories in the sidecar for binaries to find those libraries.
+The `setup_path.sh` script deployed as well, creates an LD_LIBRARY_PATH variable pointing to all library directories in the sidecar for binaries to find those libraries.
 
 #### make_setup_path.sh
-The next step is to generate the setup_path.sh file which is to be deployed in order for users to have an easy way to setup correct paths for the sidecar.
+
+The next step is to generate the `setup_path.sh` file which is to be deployed in order for users to have an easy way to setup correct paths for the sidecar.
 
 This script is not static but requires some adjustments to fit the environment. For example system library folders are translated relative to the sidecar folder.
 
 Next builders can offer an optional callback function, called to register additional commands.  
 
 #### Backup of the existing sidecar
+
 The next step being very delicate it is highly recommended to backup the previous installation prior to the actual deployment. The deployment script offers this service (which can be configured) as well.
 
 #### Three-way syncing of configuration filers

@@ -7,6 +7,7 @@
 !/conf.d/build_*.conf
 !/builders.d
 !/builders.d/build_*.sh
+!/builders.d/build_*.sh.disabled
 !/deploy.sh
 !/setup_path.sh.template
 !/README.MD

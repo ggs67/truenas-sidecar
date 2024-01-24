@@ -4,6 +4,12 @@
 
 #set -x
 
+# If we are a sub process of this script, we assume BUILD_ALL request (i.,e. ignore any --all option)
+# ps --pid $PPID -h -o cmd | fgrep -q "${ME}" 2>/dev/null && declare -r BUILD_ALL=Y || declare -r BUILD_ALL=N
+# Note: - we switched from above automatic to the explicit method below, to distinghuish of other restarts (like for -L)
+#       - also need to parse this here to avoid -Z to be taken into account for any option lists below
+[ "$1" = "-Z" ] && declare -r BUILD_ALL=Y && shift || declare -r BUILD_ALL=N
+
 # Allow trapping of command not found
 unset -f command_not_found_handle
 
@@ -44,9 +50,6 @@ declare -r BUILD_PHASE_LIST="prepare,prerequisites,config,build,saveconfig,insta
 declare -r FIRST_BUILD_PHASE=${BUILD_PHASE_LIST%%,*}
 declare -r LAST_BUILD_PHASE=${BUILD_PHASE_LIST##*,}
 BUILD_PHASE=none
-
-# If we are a sub process of this script, we assume BUILD_ALL request (i.,e. ignore any --all option)
-ps --pid $PPID -h -o cmd | fgrep -q "${ME}" 2>/dev/null && declare -r BUILD_ALL=Y || declare -r BUILD_ALL=N
 
 #-----------------------------------------------------------------------------
 # usage: print out usage information
@@ -152,32 +155,46 @@ local NORMAL=$(tput sgr0)
 parse_opt_build()
 {
   [ -z "$1" ] && usage "--b|--build option requires an argument" && exit 99
-  if [[ "$1" =~ ([^-]*)[-]([^-]*) ]]
+  if [[ "$1" =~ ^([^-]*)([-]([^-]*))? ]]
   then
-    # we have a '-' syntax
-    local _start="${BASH_REMATCH[1]}"
-    local _end="${BASH_REMATCH[2]}"
-    # Not documented but we allow the -<end> syntax, which is equal to <end>
-    # without '-' (dosumented)
+    # we have a valid syntax
+    # end       : [1]=end [2]="" [3]=""
+    # start-    : [1]=start [2]="-" [3]=""
+    # -end      : [1]= [2]=-end [3]=end
+    # start-end : [1]=start [2]=-end [3]=end
+    if [ -n "${BASH_REMATCH[2]}" ]
+    then # We have a dash
+      local _start="${BASH_REMATCH[1]}"
+      local _end="${BASH_REMATCH[3]}"
+      # Not documented but we allow the -<end> syntax, which is equal to <end>
+      # without '-' (dosumented)
+    else
+      # we have no '-'
+      local _start=prepare
+      local _end="${BASH_REMATCH[1]}"
+    fi
   else
-    # we have no '-'
-    local _start=prepare
-    local _end="$1"
+    error "invalid build phase(s) specififcation (--build $1)"
   fi
+  
   [ -z "$_start" ] && _start=${FIRST_BUILD_PHASE}
   [ -z "$_end" ] && _end=${LAST_BUILD_PHASE}
   check_value_in _start "${BUILD_PHASE_LIST}" "'${_start}' is invalid value for -b|--build"
   check_value_in _end   "${BUILD_PHASE_LIST}" "'${_end}' is invalid value for -b|--build"
   BUILD_PHASES=( $_start $_end )
+  list_item_since "${BUILD_PHASE_LIST}" "${_end}" "${_start}" || error "the end phase '${_end}' cannot be before the start '${_start}'"  
   check_array_size BUILD_PHASES 2 2 "BUG: BUILD_PHASES should have 2 values"
+  verbose 1 "  processing phases ${_start} to ${_end}..."
 }
 
 #-----------------------------------------------------------------------------
+OPT_ALL=N # Presence of --all
 parse_build_cmd()
 {
 local OPT
 local idx=0
 declare -g BUILD_ARGS=()
+local oo=0 # Counts operational options
 
   set -- "${CMD_ARGS[@]}"
   while [ "${1:0:1}" = "-" ]
@@ -185,20 +202,20 @@ declare -g BUILD_ARGS=()
     OPT="$1"
     BUILD_ARGS+=( ${OPT} )
     idx=$((idx+1))  
+    oo=$((oo+1))  
     shift    
     case $OPT in
 	-h|--help) usage
 		   exit 0
 		   ;;
 	-a|--all)  [ ${BUILD_ALL} = Y ] && continue # Already in build-all mode
-	           _build_all
-		   # Just fall through if ever _build_all returns (this indicates that we aer already in build_all mode)
+	           OPT_ALL=Y
 		   ;;
 	-P|--purge) [ ${BUILD_ALL} = Y ] && continue # was handled by parent
 	            purge_directory "${LOCAL_DST}"
 		    ;;
         -e|--enable|-d|--disable)
-	           [ $idx -ne 1 ] && usage "enable/disable options cannot be mixed with other options" && exit 99
+	           [ ${oo} -gt 1 ] && usage "enable/disable options cannot be mixed with other operational options" && exit 99
  	           BUILD_ARGS+=( "$@" )
                    CMD_ARGS=( "$OPT" "$@" )
                    _manage_packages
@@ -216,10 +233,12 @@ declare -g BUILD_ARGS=()
 		    shift
 		    ;;
 	-v) VERBOSE=$((VERBOSE+1))
+	    oo=$((oo-1)) # Not  operational
 	    ;;
         -x|--trace)
-                   set -x
-                   ;;
+ 	    oo=$((oo-1)) # Not  operational
+            set -x
+            ;;
 	--list)
 	    list_builders
 	    exit 0
@@ -251,10 +270,13 @@ _manage_packages()
       esac
     else
       BUILDER="${BUILDERDIR}/build_${ARG}.sh"
-      if [ -f "${BUILDER}" ]
+      if [ -f "${BUILDER}" -o -f "${BUILDER}.disabled" ]
       then
         [ $ENABLE = X ] && echo "BUG: unexpected unknown enabler setting" && exit 1
-	[ $ENABLE = Y ] && chmod 755 "${BUILDER}" || chmod 644 "${BUILDER}"
+	[ $ENABLE = Y -a ! -f "${BUILDER}.disabled" ] && verbose 1  "  ${ARG} builder already enabled..."
+	[ $ENABLE = N -a ! -f "${BUILDER}" ] && verbose 1  "  ${ARG} builder already disabled..."
+	[ $ENABLE = Y -a -f "${BUILDER}.disabled" ] && verbose 1  "  enabling ${ARG} builder..." && mv "${BUILDER}.disabled" "${BUILDER}"
+	[ $ENABLE = N -a -f "${BUILDER}" ] && verbose 1  "  disabling ${ARG} builder..." && mv "${BUILDER}" "${BUILDER}.disabled"
       else
         echo "ERROR: unknown builder $( basename $BUILDER )"
         exit 1
@@ -269,21 +291,22 @@ _build_all()
 local BUILDER
     
   [ ${BUILD_ALL} = "Y" ] && return # allready in build all mode
-  while read BUILDER
+
+  while read -u 3 BUILDER
   do
     BUILDER=$( basename "$BUILDER" )
     local PACKAGE=""
-    [[ "${BUILDER}" =~ ^build_(.+).sh$ ]] && PACKAGE="${BASH_REMATCH[1]}"
+    [[ "${BUILDER}" =~ ^build_(.+)[.]sh([.]disabled)?$ ]] && PACKAGE="${BASH_REMATCH[1]}"
     echo ""
     echo "=========================================================================="
-    if [ -x "${BUILDERDIR}/${BUILDER}" ]
+    if [ -z "${BASH_REMATCH[2]}" ]
     then
       echo "building package ${PACKAGE}..."
-      ${SCRIPT} "${CMD_ARGS[@]}" "${PACKAGE}"
+      ${SCRIPT} -Z "${BUILD_ARGS[@]}" "${PACKAGE}"
     else
       echo "INFO: ${PACKAGE} is disabled." >&2
     fi
-  done < <( find ${BUILDERDIR} -maxdepth 1 -name "build_*.sh" | sort )
+  done 3< <( find ${BUILDERDIR} -maxdepth 1 -name "build_*.sh" -o -name "build_*.sh.disabled"| sort )
     
   exit 0
 }
@@ -590,6 +613,15 @@ reset_shell_options # Bring script to expected behaviors
 parse_build_cmd # Parse build.sh options command only
 #echo "BUILD_ARGS  =${BUILD_ARGS}"
 #echo "BUILDER_ARGS=${BUILDER_ARGS}"
+
+# Handle --all
+if [ ${OPT_ALL} = Y ]
+then
+  [ -n "${CMD_ARGS[0]}" ] && error "--all option does not allow package name"
+  _build_all
+  exit $?
+fi
+
 
 declare -r TARGET="${CMD_ARGS[0]}"
 [ -z "$TARGET" ] && usage "package name missing" && exit 99
