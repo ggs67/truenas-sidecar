@@ -9,6 +9,8 @@ unset -f command_not_found_handle
 
 declare -r RUN_DIR="$PWD"
 CMD_ARGS=( "$@" )
+BUILDER_ARGS=() # build_xxx.sh <args..>
+BUILD_ARGS=()   # args of build.sh (i.e. ORIG_CMD_ARGS minus BUILDER_ARGS)
 declare -r ORIG_CMD_ARGS=( "$@" )
 declare -r SCRIPT="$0" # Get calling script
 declare -r ME=$(basename "$SCRIPT")
@@ -171,18 +173,19 @@ parse_opt_build()
 }
 
 #-----------------------------------------------------------------------------
-BUILD_RESTART=N
 parse_build_cmd()
 {
 local OPT
 local idx=0
+declare -g BUILD_ARGS=()
 
   set -- "${CMD_ARGS[@]}"
   while [ "${1:0:1}" = "-" ]
   do
     OPT="$1"
+    BUILD_ARGS+=( ${OPT} )
     idx=$((idx+1))  
-    shift
+    shift    
     case $OPT in
 	-h|--help) usage
 		   exit 0
@@ -196,6 +199,7 @@ local idx=0
 		    ;;
         -e|--enable|-d|--disable)
 	           [ $idx -ne 1 ] && usage "enable/disable options cannot be mixed with other options" && exit 99
+ 	           BUILD_ARGS+=( "$@" )
                    CMD_ARGS=( "$OPT" "$@" )
                    _manage_packages
 		   exit 0
@@ -208,6 +212,7 @@ local idx=0
                    exit $?
 		   ;;
 	-b|--build) parse_opt_build "$1"
+		    BUILD_ARGS+=( "$1" )
 		    shift
 		    ;;
 	-v) VERBOSE=$((VERBOSE+1))
@@ -224,6 +229,7 @@ local idx=0
     esac
   done
   CMD_ARGS=( "$@" )
+  BUILDER_ARGS=( "$@" )
 }
 
 #------------------------------------------------------------
@@ -427,7 +433,7 @@ local github=N
     if [ -d "$SRC" -a $DISTCLEAN = Y -a $FORCE != Y ]
     then
       echo "Resetting environment..."
-      catch_log distclean.log cd $SRC ";" [ ! -f Makefile ] "||" make distclean
+      catch_log distclean.log cd "$SRC" ";" [ ! -f Makefile ] "||" make distclean
       return
     fi
   fi
@@ -514,7 +520,7 @@ build_end()
   echo ""
   echo "${TARGET} build complete"
   echo ""
-  echo "Log files con be found in ${LOGDIR}"
+  echo "Log files can be found in ${LOGDIR}"
   echo ""
 }
 
@@ -582,6 +588,8 @@ local OPTS=
 reset_shell_options # Bring script to expected behaviors
 
 parse_build_cmd # Parse build.sh options command only
+#echo "BUILD_ARGS  =${BUILD_ARGS}"
+#echo "BUILDER_ARGS=${BUILDER_ARGS}"
 
 declare -r TARGET="${CMD_ARGS[0]}"
 [ -z "$TARGET" ] && usage "package name missing" && exit 99
@@ -623,10 +631,15 @@ start_phase()
   list_item_since "${BUILD_PHASE_LIST}" "$1" "${BUILD_PHASES[0]}" || return 1
   list_item_until "${BUILD_PHASE_LIST}" "$1" "${BUILD_PHASES[1]}" && return 0
 
+  local _args=( "${BUILD_ARGS[@]}" )
+  delete_option_from_array _args "--build" 1
+  delete_option_from_array _args "-b" 1
+  _args=( "${_args[@]}" "${BUILDER_ARGS[@]}" )
   echo ""
   echo "Build process aborted (by request) before '$1' phase"
-  echo "You may continue the process using '${SCRIPT} --build ${1}- ${TARGET}'"
+  echo "You may continue the process using '${SCRIPT} --build ${1}- ${_args[@]}'"
   echo ""
+  build_end
   exit 0 # This is not an error
 }
 
@@ -716,6 +729,8 @@ else
   BUILD_PHASES[0]="${FIRST_BUILD_PHASE}"
 fi
 
+build_begin
+
 #--------------------------------------
 if start_phase prepare
 then  
@@ -798,3 +813,4 @@ start_phase deploy && deploy deploy
 #--------------------------------------
 start_phase restoreconfig && deploy restoreconfig
 
+build_end
