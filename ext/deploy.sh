@@ -4,17 +4,11 @@
 
 #set -x
 
-#SCRIPT="$0"
-#ME=$(basename "$SCRIPT")
-#DIR=$(dirname "$SCRIPT")
-#DIR="${DIR:-.}"
-#DIR=$( readlink -e "$DIR" )
-
-source ${DIR}/gglib/include errmgr
+source ${BUILD_DIR}/gglib/include errmgr
 Establish
 
-cd "$DIR" || exit 99
-#source ${DIR}/ext/load_config.sh || exit 99
+cd "$BUILD_DIR" || exit 99
+#source ${BUILD_DIR}/ext/load_config.sh || exit 99
 
 gglib_include present checks files
 
@@ -32,7 +26,7 @@ require()
 
 #-----------------------------------------------------------------------------
 # %1 : variable
-# %2 : alias (can be empty) 
+# %2 : alias (can be empty)
 # %3 : command or command path, relative or absolute
 # %4... : command options
 define_command()
@@ -42,7 +36,7 @@ define_command()
   local CMD="$3"
   local CMDPATH=""
   shift 3
-  
+
   require "${VAR}" "variable name" "define_command"
   require "${CMD}" "command name or path" "define_command"
 
@@ -58,9 +52,9 @@ define_command()
   fi
   [ ! -f "${CMDPATH}" ] && return 0
   if [ -z "$1" ]
-  then  
+  then
     echo export ${VAR}=\"${CMDPATH}\"
-    [ -n "$ALIAS" ] && echo "[ \$ALIASES = Y ] && alias ${ALIAS}=\"${CMDPATH}\" || true" 
+    [ -n "$ALIAS" ] && echo "[ \$ALIASES = Y ] && alias ${ALIAS}=\"${CMDPATH}\" || true"
   else
     echo export ${VAR}=\"${CMDPATH} $*\"
     [ -n "$ALIAS" ] && echo "[ \$ALIASES = Y ] && alias ${ALIAS}=\"${CMDPATH} $*\" || true"
@@ -70,10 +64,12 @@ define_command()
 #-----------------------------------------------------------------------------
 collect_all_libs()
 {
+local FILE
+  
   while read FILE
   do
    [[ "$FILE" =~ ^([^:]+)[:] ]] || continue
-   FILE="${BASH_REMATCH[1]}"     
+   FILE="${BASH_REMATCH[1]}"
    objdump -p "${FILE}" | grep NEEDED | grep -E -o '[^[:space:]]+$'
   done < <( find "$SRC" -type f -executable -exec file {} + | grep -E '^[^:]*[:][[:space:]]*ELF[[:space:]]' )
 }
@@ -104,7 +100,7 @@ local L
       L=$( basename "$2" )
       eval $1="${ROOT}${L}"
       return 0
-    fi    
+    fi
   done
   eval $1="$2" # If no root identified, use full path
   return 1
@@ -125,7 +121,7 @@ local LIBINSTDIR="$2" # is ${SRC}/${ROOT} (actually without / as $ROOT has a lea
 
   [ $linkcb = N ] && verbose 2 "  staging ${LIBNAME}..."
   [ $linkcb = Y ] && verbose 2 "    linking ${LIBNAME}..."
-  
+
   # Is link, then process actual library first
   if [ -L "$LIB" ]
   then
@@ -153,11 +149,11 @@ local LIBINSTDIR="$2" # is ${SRC}/${ROOT} (actually without / as $ROOT has a lea
       [ "${POINTER}" =  "${LIBFILEINST}" ] && return # Link OK
       rm "${LIBINST}" # Non-matching link, recreate
     fi
-    RELPATH=$( realpath "--relative-to=${LIBINSTDIR}" "${LIBFILEINST}" )
+    local RELPATH=$( realpath "--relative-to=${LIBINSTDIR}" "${LIBFILEINST}" )
     ln -s -v "${RELPATH}" "${LIBINST}"
   else
     [ ! -d "$LIBINSTDIR" ] && mkdir -p "$LIBINSTDIR"
-    cp -v -u -p "$LPATH" "$LIBINST"
+    cp -v -u -p "$LIB" "$LIBINST"
   fi
 }
 
@@ -203,7 +199,7 @@ deploy()
   local SRC="${LOCAL_DST}"
   local URI="root@$NAS"
 
-  local VAULT="${DIR}/config_vault.d"
+  local VAULT="${BUILD_DIR}/config_vault.d"
 
   local SEP=":"
 
@@ -243,7 +239,7 @@ deploy()
         #       This is to avoid garbrage in the stagin area. The purpose of this sync is only meant as fallback
         #       avoiding overwriting of user config files by the deployment. Deployment will however still
         #       delete any site-specific config files which are then restored from the vault (saved below)
-        rsync -azhv --existing -u -e ssh --progress "${URI}:${TRUENAS_DST}/" "$SRC" 
+        rsync -azhv --existing -u -e ssh --progress "${URI}:${TRUENAS_DST}/" "$SRC"
       else
         heading1 "syncing back to staging area ${TTY_COLOR_RED}(disabled)${TTY_NORMAL}"
       fi
@@ -253,7 +249,7 @@ deploy()
         heading1 "cleaning-up deleted configuration files..."
         rsync --recursive --delete --ignore-existing --existing --prune-empty-dirs --verbose "${URI}:${TRUENAS_DST}/" "${VAULT}"
       fi
-        
+
       if [ ${DEPLOY_CONFIG_DUAL_SYNC} = Y ]
       then
         heading1 "Re-syncing known config files..."
@@ -265,28 +261,28 @@ deploy()
 	heading1 "'Touching' all config vault files"
 	find "${VAULT}" -exec touch --no-create {} \;
       fi
-    fi    
+    fi
   return 0
   fi
-      
+
   if [ "${MODE}" = "deploy" ]
   then
     title "Resolving libraries"
-    
+
     heading1  "Collecting required libraries..."
     #LIBS=( $( collect_libs ) )
+    local LIB LIBS LIBSP
     readarray -t LIBS < <( collect_libs )
     LIBSP=() # resolved libs: entry = "<root-lib-dir> <library> <local-path> <remote-path>"
 
-    #ssh $URI for DIR in $LIBDIR ; do find \$DIR -type f 
-
     verbose 1 -e "  ${#LIBS[@]} libraries identified\n"
-    
+
     heading2 "Identifying unavailable libraries on TrueNAS..."
     # Find local library paths
     for LIB in "${LIBS[@]}"
     do
       FOUND=N
+      local LD
       for LD in "${LIBDIRS[@]}"
       do
         [ ! -d "$LD" ] && continue
@@ -294,13 +290,13 @@ deploy()
         if [ -n "$P" ]
         then
           # Check for remote path
-          RP=$( ssh $URI for LD in "${LIBDIRS[@]}" \; do [ -d "\$LD" ] \&\& find -L "\$LD" -name "${LIB}" -type f 2>/dev/null \; done | head -1 )
+          local RP=$( ssh $URI for LD in "${LIBDIRS[@]}" \; do [ -d "\$LD" ] \&\& find -L "\$LD" -name "${LIB}" -type f 2>/dev/null \; done | head -1 )
           LIBSP+=( "${LD}${SEP}${LIB}${SEP}${P}${SEP}${RP}" )
           FOUND=Y
           break
         fi
       done
-      
+
       if [ $FOUND != Y ]
       then
         # Try to find in staging area (packlage lib)
@@ -313,10 +309,10 @@ deploy()
     heading2 "Staging unavailable libraries"
     for P in "${LIBSP[@]}"
     do
-      ROOT=$(echo "$P"|cut -f 1 -d ':')
-      LIB=$(echo "$P"|cut -f 2 -d ':')
-      LPATH=$(echo "$P"|cut -f 3 -d ':')
-      RPATH=$(echo "$P"|cut -f 4 -d ':')
+      local ROOT=$(echo "$P"|cut -f 1 -d ':')
+      local LIB=$(echo "$P"|cut -f 2 -d ':')
+      local LPATH=$(echo "$P"|cut -f 3 -d ':')
+      local RPATH=$(echo "$P"|cut -f 4 -d ':')
       verbose 3 -n "${LIB} "
       [ "${LPATH:0:1}" != "/" ] && verbose 3 -e "\nBUG: expect local library path to be absolute" && exit 5
       [ "${ROOT}" = "*" ] && verbose 3 "(included in package)" && continue
@@ -325,15 +321,15 @@ deploy()
 
       install_lib "${LPATH}" "${SRC}${ROOT}"
     done
-    
+
     title "Making setup_path.sh"
     heading1 "generate new setup_path.sh..."
-    ${DIR}/ext/make_setup_path.sh
+    ${BUILD_DIR}/ext/make_setup_path.sh
 
     title "Checking for additional package commands"
     while read BUILDER
     do
-      unset -f package_define_commands    
+      unset -f package_define_commands
       source "$BUILDER"
       OPTS=""
       [ ! -x "$BUILDER" ] && OPTS="-D" # Pass -D optioon if builder was disabled
@@ -347,7 +343,7 @@ deploy()
       else
         echo "  - no additional commands for $BUILDER"
       fi
-    done < <(find "$DIR/builders.d" -maxdepth 1 -name "build_*.sh" | sort)
+    done < <(find "$BUILD_DIR/builders.d" -maxdepth 1 -name "build_*.sh" | sort)
 
     [ -z "${TRUENAS_DST}" ] && echo "DANGEROUS ERROR - TRUENAS_DST is empty. Aborting..." && exit 1
     [ -z "${SRC}" ] && echo "DANGEROUS ERROR - SRC is empty. Aborting..." && exit 1
@@ -357,8 +353,6 @@ deploy()
       alias -p
       title "NAS sidecar backup"
 
-      [ -z "${TRUENAS_BACKUP_DIR}" ] && TRUENAS_BACKUP_DIR=$( dirname "${TRUENAS_DST}" )
-    
       check_var TRUENAS_BACKUP_DIR
       check_absolute_path TRUENAS_BACKUP_DIR
       check_var TRUENAS_BACKUP_VERSIONS
@@ -373,11 +367,11 @@ deploy()
     echo "syncing NAS..."
     rsync -avzh -e ssh --chown ${DST_USER}:${DST_GROUP} --delete "${SRC}/" "${URI}:${TRUENAS_DST}"
   fi
-  
+
   if [ "${MODE}" = "restoreconfig" ]
   then
     [ "${DEPLOY_CONFIG_KEEP}" != "Y" ] && return 0
-    title "Rstoring config files" 
+    title "Rstoring config files"
     rsync -avzh -e ssh --chown ${DST_USER}:${DST_GROUP} --progress "${VAULT}/" "${URI}:${TRUENAS_DST}"
   fi
 }

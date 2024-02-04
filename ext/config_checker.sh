@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-DIR=$( dirname "${BASH_SOURCE}" )
+BUILD_DIR=$( dirname "${BASH_SOURCE}" )
 
-source ${DIR}/../gglib/include checks
+source ${BUILD_DIR}/../gglib/include checks
 
-# source ${DIR}/../conf.d/config.sh
+# source ${BUILD_DIR}/../conf.d/config.sh
 
 check_config()
 {

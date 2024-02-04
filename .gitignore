@@ -12,6 +12,7 @@
 !/setup_path.sh.template
 !/README.MD
 !/build.sh
+!/change_vars.sh
 !/libs
 !/libs/*.lib
 !/config_vault.d
@@ -30,3 +31,7 @@
 !/docs/img/*.svg
 !/docs/img/*.vsdx
 
+!/script_var_changer
+!/script_var_changer/script_change_var.py
+!/change_vars.sh
+!/vars.lis

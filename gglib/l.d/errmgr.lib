@@ -51,9 +51,9 @@ _gglib_catch_error()
   fi
 
 
-  L=$LINE
-  L1=$((L-5))
-  L2=$((L+2))
+  local L=$LINE
+  local L1=$((L-5))
+  local L2=$((L+2))
 
   if [ -n "${CATCH_LOGFILE}" -a -f "${CATCH_LOGFILE}" ]
   then

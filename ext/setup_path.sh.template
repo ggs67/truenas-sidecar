@@ -17,7 +17,7 @@ usage()
 {
   echo ""
   [ -n "$1" ] && echo "ERROR: $1" && echo ""
-  
+
   echo "usage $ME [-a]" >&2
   echo ""
   echo "  -a : define aliases for commands, instead of variables only"
@@ -35,7 +35,7 @@ local dir="${2%/}"
 local orig=""
 
   [ ! -d "$dir" ] && return 0 # Only add existing directories
-  eval orig=":\${$var}:"  
+  eval orig=":\${$var}:"
   echo "$orig" | fgrep -q ":${dir}:" 2>/dev/null && return 0
   if [ $orig = "::" ]
   then
@@ -57,7 +57,7 @@ local file="${DIR}/$2"
 
 setup_path_add_paths()
 {
-local VAR=$1    
+local VAR=$1
 local DIR
 
   shift

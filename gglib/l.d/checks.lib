@@ -578,3 +578,36 @@ check_directory_W()
   _check_directory W "$@"
 }
 
+#-------------------------------------------------------------
+ # %1 : level
+ # %2 : var
+ # %3 : message (optional)
+ # %4 : warning wait delay
+_check_readonly_var()
+{
+  grep -q -E '^declare -[a-z]*r' < <(declare -p $2) && return 0
+  _report_check "$1" "$3" "variable $2 expected to be read-onlae (declare -r)" "$4"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_readonly_var()
+{
+  _check_readonly_var E "$1" "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+check_readonly_var_B()
+{
+  _check_readonly_var B "$1" "$2"
+}
+
+ # %1 : var
+ # %2 : message (optional)
+ # %3 : [wait timeout]
+check_readonly_var_W()
+{
+  _check_readonly_var W "$1" "$2" "$3"
+}
+

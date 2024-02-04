@@ -55,6 +55,21 @@ if args.call and not args.function:
   print(f"ERROR: -C|--call flag requires -f|--function")
   sys.exit(99)
 
+###############################################################################
+class ParseError(BaseException):
+
+  def __init__(self, msg, line=None):
+    super().__init__(msg)
+    self.Message=msg
+    self.LineNumber=line
+
+  #----------------------------------------------------------------------------
+  def __str__(self):
+    if self.LineNumber is None:
+      return f"parse error: {self.Message}"
+    else:
+      return f"parse error in line {self.LineNumber}: {self.Message}"
+
 #---------------------------------------------------------------------------
 def split_comment(s: str):
   q=None
@@ -237,7 +252,7 @@ class TConfigScript:
     checker('CHECKER_DIR=$( dirname "${BASH_SOURCE}" )')
     checker_spacer()
     cmt=""
-    checker(f'{cmt}source ${{CHECKER_DIR}}/{os.path.relpath(self._gglib.absolute(), self._checkerDir.absolute())}/include checks')
+    checker(f'{cmt}source ${{CHECKER_DIR}}/{os.path.relpath(self._gglib.absolute(), self._checkerDir.absolute())}/include checks vars')
     checker_spacer()
     cmt="# " if args.nosource else ""
     checker(f'{cmt}source ${{CHECKER_DIR}}/{os.path.relpath(self._path, self._checkerDir.absolute())}')
@@ -263,41 +278,54 @@ class TConfigScript:
   #----------------------------------------------------------------------------
   def _parseConfig(self):
     f=open(self._path, "r")
-    for line in f:
-      line=line.rstrip()
-      if line == "": continue # Ignore empty lines
+    lnum=0
 
-      # Variable assignment ?
-      m=re.fullmatch(r"\s*([a-zA-Z0-9_]+)[=](.*)", line)
-      if m is not None:
-        var = m.group(1)
-        val = m.group(2).strip()
-        val,comment = split_comment(val)
-        if comment.startswith("#->"):
-          check=comment[3:].strip()
-        else:
-          check=None
-        self._update(var,val,check)
-        continue
+    try:
+      for line in f:
+        lnum+=1
+        line=line.rstrip()
+        if line == "": continue # Ignore empty lines
 
-      # OOL check ?
-      m=re.fullmatch(r"\s*[#][-][>](.+)", line)
-      if m is not None:
-        check=m.group(1).strip()
-        if check != "":
-          self._update(None, None, check)
-        continue # We allow multiple checks (avoid to clear _lastVardef below)
+        # Variable assignment ?
+        m=re.fullmatch(r"\s*([a-zA-Z0-9_]+)[=](.*)", line) # Simple assignment
+        if m is None:
+          # declare ?
+          m = re.fullmatch(r"\s*declare(?:\s+[-][a-zA-Z]+)*\s([a-zA-Z0-9_]+)[=](.*)", line)
 
-      self._lastVardef=None
+        if m is not None:
+          var = m.group(1)
+          val = m.group(2).strip()
+          val,comment = split_comment(val)
+          if comment.startswith("#->"):
+            check=comment[3:].strip()
+          else:
+            check=None
+          self._update(var,val,check)
+          continue
+
+        # OOL check ?
+        m=re.fullmatch(r"\s*[#][-][>](.+)", line)
+        if m is not None:
+          check=m.group(1).strip()
+          if check != "":
+            self._update(None, None, check)
+          continue # We allow multiple checks (avoid to clear _lastVardef below)
+
+        self._lastVardef=None
+    except ParseError as e:
+      e.LineNumber=lnum
+      raise
+
+      f.close()
 
   #----------------------------------------------------------------------------
   def _update(self, var, val, check):
     if var is None:
       if self._lastVardef is None:
-        print(f"ERROR: out-of-line check without previous variable assignment")
-        sys.exit(1)
+        raise ParseError(f"out-of-line check ({check}) without previous variable assignment")
 
       return self._lastVardef.Update(check,True)
+
     if var in self._checks:
       self._checks[var].Confirmer=True
       self._checks[var].Update(check, True)

@@ -20,21 +20,23 @@ BUILD_ARGS=()   # args of build.sh (i.e. ORIG_CMD_ARGS minus BUILDER_ARGS)
 declare -r ORIG_CMD_ARGS=( "$@" )
 declare -r SCRIPT="$0" # Get calling script
 declare -r ME=$(basename "$SCRIPT")
-DIR=$(dirname "$SCRIPT")
-DIR="${DIR:-.}"
-declare -r DIR=$( readlink -e "$DIR" )
-[ -z "$DIR" ] && echo "error: unexpected empty DIR variable." && exit 99
-cd "$DIR" || exit 1
+BUILD_DIR=$(dirname "$SCRIPT")
+BUILD_DIR="${BUILD_DIR:-.}"
+declare -r BUILD_DIR=$( readlink -e "$BUILD_DIR" )
+[ -z "$BUILD_DIR" ] && echo "error: unexpected empty BUILD_DIR variable." && exit 99
+
+cd "$BUILD_DIR" || exit 1
 
 source gglib/include errmgr
 Establish
 
-declare -r CONFDIR="${DIR}/conf.d"
-declare -r BUILDERDIR="${DIR}/builders.d"
-declare -r LOGROOT="${DIR}/logs"
-declare -r PACKAGEROOT="${DIR}/packages"
-declare -r DISTRIBUTEDIR="${DIR}/distribute.d"
-declare -r PERSISTENT_STORE_DIR="${DIR}/persist.d"
+declare -r CONFDIR="${BUILD_DIR}/conf.d"
+declare -r BUILDERDIR="${BUILD_DIR}/builders.d"
+declare -r LOGROOT="${BUILD_DIR}/logs"
+declare -r PACKAGEROOT="${BUILD_DIR}/packages"
+declare -r ARCHIVEROOT="${PACKAGEROOT}"
+declare -r DISTRIBUTEDIR="${BUILD_DIR}/distribute.d"
+declare -r PERSISTENT_STORE_DIR="${BUILD_DIR}/persist.d"
 declare PERSISTENT_VARS=( BUILD_PHASE PERSISTENT_VARS LINK ARCHIVE PACKAGE_TYPE PACKAGE_DIR PREFIX )
 
 declare -r SHELL_ENABLED_OPTS="checkwinsize cmdhist complete_fullquote extquote force_fignore globasciiranges globskipdots hostcomplete interactive_comments patsub_replacement progcomp promptvars sourcepath"
@@ -103,7 +105,7 @@ isFunction()
 }
 
 # First we get ony the error catcher
-#source ${DIR}/gglib/include errmgr
+#source ${BUILD_DIR}/gglib/include errmgr
 #Establish
 
 # ...and then all other libraries
@@ -111,8 +113,13 @@ gglib_include all
 
 #-----------------------------------------------------------------------------
 
-#source ${DIR}/conf.d/config.sh
-source "${DIR}/ext/load_config.sh"
+#source ${BUILD_DIR}/conf.d/config.sh
+# Load and check config
+source "${BUILD_DIR}/ext/load_config.sh"
+
+# Config variable enforcing
+make_readonly_var TRUENAS_BACKUP_DIR $( dirname "${TRUENAS_DST}" )
+
 
 # Sanity checks
 check_equal_vars_W TRUENAS_DST LOCAL_DST
@@ -131,21 +138,18 @@ BUILD_PHASES=( ${FIRST_BUILD_PHASE} ${DEFAULT_BUILD_PHASE} )
 list_builders()
 {
 local BUILDER PKG STATUS
-local RED=$(tput setaf 1)
-local GREEN=$(tput setaf 2)
-local NORMAL=$(tput sgr0)
 
   echo ""
   echo "List of all builders"
   echo "--------------------"
   echo ""
-  
+
   while read BUILDER
   do
     BUILDER=$( basename "$BUILDER" )
     PKG="${BUILDER#build_}"
     PKG="${PKG%.sh}"
-    [ -x "${BUILDERDIR}/${BUILDER}" ] && STATUS="${GREEN}enabled${NORMAL}" || STATUS="${RED}disabled${NORMAL}"
+    [ -x "${BUILDERDIR}/${BUILDER}" ] && STATUS="${TTY_COLOR_GREEN}enabled${TTY_NORMAL}" || STATUS="${TTY_COLOR_RED}disabled${TTY_NORMAL}"
     printf "%-16s (%s)\n" "${PKG}" $STATUS
   done < <( ls "${BUILDERDIR}/build_"*.sh | sort)
   echo ""
@@ -176,13 +180,13 @@ parse_opt_build()
   else
     error "invalid build phase(s) specififcation (--build $1)"
   fi
-  
+
   [ -z "$_start" ] && _start=${FIRST_BUILD_PHASE}
   [ -z "$_end" ] && _end=${LAST_BUILD_PHASE}
   check_value_in _start "${BUILD_PHASE_LIST}" "'${_start}' is invalid value for -b|--build"
   check_value_in _end   "${BUILD_PHASE_LIST}" "'${_end}' is invalid value for -b|--build"
   BUILD_PHASES=( $_start $_end )
-  list_item_since "${BUILD_PHASE_LIST}" "${_end}" "${_start}" || error "the end phase '${_end}' cannot be before the start '${_start}'"  
+  list_item_since "${BUILD_PHASE_LIST}" "${_end}" "${_start}" || error "the end phase '${_end}' cannot be before the start '${_start}'"
   check_array_size BUILD_PHASES 2 2 "BUG: BUILD_PHASES should have 2 values"
   verbose 1 "  processing phases ${_start} to ${_end}..."
 }
@@ -201,50 +205,50 @@ local oo=0 # Counts operational options
   do
     OPT="$1"
     BUILD_ARGS+=( ${OPT} )
-    idx=$((idx+1))  
-    oo=$((oo+1))  
-    shift    
+    idx=$((idx+1))
+    oo=$((oo+1))
+    shift
     case $OPT in
-	-h|--help) usage
-		   exit 0
-		   ;;
-	-a|--all)  [ ${BUILD_ALL} = Y ] && continue # Already in build-all mode
-	           OPT_ALL=Y
-		   ;;
-	-P|--purge) [ ${BUILD_ALL} = Y ] && continue # was handled by parent
-	            purge_directory "${LOCAL_DST}"
-		    ;;
+        -h|--help) usage
+                   exit 0
+                   ;;
+        -a|--all)  [ ${BUILD_ALL} = Y ] && continue # Already in build-all mode
+                   OPT_ALL=Y
+                   ;;
+        -P|--purge) [ ${BUILD_ALL} = Y ] && continue # was handled by parent
+                    purge_directory "${LOCAL_DST}"
+                    ;;
         -e|--enable|-d|--disable)
-	           [ ${oo} -gt 1 ] && usage "enable/disable options cannot be mixed with other operational options" && exit 99
- 	           BUILD_ARGS+=( "$@" )
+                   [ ${oo} -gt 1 ] && usage "enable/disable options cannot be mixed with other operational options" && exit 99
+                   BUILD_ARGS+=( "$@" )
                    CMD_ARGS=( "$OPT" "$@" )
                    _manage_packages
-		   exit 0
+                   exit 0
                    ;;
-	-L|--log)
-	           [ $idx -ne 1 ] && usage "option -L must be first option" && exit 99
+        -L|--log)
+                   [ $idx -ne 1 ] && usage "option -L must be first option" && exit 99
                    echo "logging execution..." >&2
                    set -x
                    /usr/bin/env bash -x ./${ME} "$@" 2>&1 | tee ./${ME}.log
                    exit $?
-		   ;;
-	-b|--build) parse_opt_build "$1"
-		    BUILD_ARGS+=( "$1" )
-		    shift
-		    ;;
-	-v) VERBOSE=$((VERBOSE+1))
-	    oo=$((oo-1)) # Not  operational
-	    ;;
+                   ;;
+        -b|--build) parse_opt_build "$1"
+                    BUILD_ARGS+=( "$1" )
+                    shift
+                    ;;
+        -v) VERBOSE=$((VERBOSE+1))
+            oo=$((oo-1)) # Not  operational
+            ;;
         -x|--trace)
- 	    oo=$((oo-1)) # Not  operational
+            oo=$((oo-1)) # Not  operational
             set -x
             ;;
-	--list)
-	    list_builders
-	    exit 0
-	    ;;
-	*) echo "error: unknown option ${OPT} for build.sh"
-	   exit 99
+        --list)
+            list_builders
+            exit 0
+            ;;
+        *) echo "error: unknown option ${OPT} for build.sh"
+           exit 99
     esac
   done
   CMD_ARGS=( "$@" )
@@ -254,29 +258,30 @@ local oo=0 # Counts operational options
 #------------------------------------------------------------
 _manage_packages()
 {
+local ARG ENABLE=X
+  
   set -- "${CMD_ARGS[@]}"
-  ENABLE=X    
   while [ -n "$1" ]
   do
     ARG="$1"
-    shift      
+    shift
     if [ ${ARG:0:1} = "-" ]
     then
       case $ARG in
         -d|--disable) ENABLE=N;;
         -e|--enable)  ENABLE=Y;;
         *) usage "invalid option '$ARG' - disable/enable cannot be mixed with other options"
-	   exit 99
+           exit 99
       esac
     else
       BUILDER="${BUILDERDIR}/build_${ARG}.sh"
       if [ -f "${BUILDER}" -o -f "${BUILDER}.disabled" ]
       then
         [ $ENABLE = X ] && echo "BUG: unexpected unknown enabler setting" && exit 1
-	[ $ENABLE = Y -a ! -f "${BUILDER}.disabled" ] && verbose 1  "  ${ARG} builder already enabled..."
-	[ $ENABLE = N -a ! -f "${BUILDER}" ] && verbose 1  "  ${ARG} builder already disabled..."
-	[ $ENABLE = Y -a -f "${BUILDER}.disabled" ] && verbose 1  "  enabling ${ARG} builder..." && mv "${BUILDER}.disabled" "${BUILDER}"
-	[ $ENABLE = N -a -f "${BUILDER}" ] && verbose 1  "  disabling ${ARG} builder..." && mv "${BUILDER}" "${BUILDER}.disabled"
+        [ $ENABLE = Y -a ! -f "${BUILDER}.disabled" ] && verbose 1  "  ${ARG} builder already enabled..."
+        [ $ENABLE = N -a ! -f "${BUILDER}" ] && verbose 1  "  ${ARG} builder already disabled..."
+        [ $ENABLE = Y -a -f "${BUILDER}.disabled" ] && verbose 1  "  enabling ${ARG} builder..." && mv "${BUILDER}.disabled" "${BUILDER}"
+        [ $ENABLE = N -a -f "${BUILDER}" ] && verbose 1  "  disabling ${ARG} builder..." && mv "${BUILDER}" "${BUILDER}.disabled"
       else
         echo "ERROR: unknown builder $( basename $BUILDER )"
         exit 1
@@ -289,7 +294,7 @@ _manage_packages()
 _build_all()
 {
 local BUILDER
-    
+
   [ ${BUILD_ALL} = "Y" ] && return # allready in build all mode
 
   while read -u 3 BUILDER
@@ -307,7 +312,7 @@ local BUILDER
       echo "INFO: ${PACKAGE} is disabled." >&2
     fi
   done 3< <( find ${BUILDERDIR} -maxdepth 1 -name "build_*.sh" -o -name "build_*.sh.disabled"| sort )
-    
+
   exit 0
 }
 
@@ -322,7 +327,7 @@ get_github()
   declare -g LINK="$1"
   declare -g ARCHIVE="${1##*/}"
   declare -g PACKAGE_TYPE=github
-  
+
   ARCHIVE="${ARCHIVE%.git}"
   declare -g PACKAGE_DIR="${PACKAGEROOT}/${ARCHIVE}"
   check_directory -o "${PACKAGE_DIR}"
@@ -331,9 +336,9 @@ get_github()
     echo "  fetching ${ARCHIVE}..."
     ( cd "${PACKAGE_DIR}" ; git fetch )
   else
-    echo "  cloning ${ARCHIVE}..."    
+    echo "  cloning ${ARCHIVE}..."
     ( cd "${PACKAGEROOT}" ; git clone "$1" )
-  fi    
+  fi
 }
 
 #------------------------------------------------------------
@@ -343,13 +348,14 @@ get_github()
 # Output:
 #  LINK=%1 & ARCHIVE=%2 or extracted arhgive name
 # PACKAGE_TYPE=archive
-download_archive() 
+download_archive()
 {
+  local OPTS
   pushd . >/dev/null
   cd "${PACKAGEROOT}"
   parse_func_options "download_archive" "N=new" "$@"
   set -- "${OPT_ARGS[@]}"
-  
+
 declare -g LINK="$1"
 declare -g ARCHIVE="$2"
 declare -g PACKAGE_TYPE=archive
@@ -368,7 +374,7 @@ declare -g PACKAGE_TYPE=archive
   fi
 
   [ -z "$ARCHIVE" ] && echo "no archive name in download_archive()" && exit 1
-  
+
   # Use uf/then to aboid error trap if archive exists
   #if [ ! -f ${ARCHIVE} -o "${PARSED_OPTS[new]}" = "Y" ]
   #then
@@ -395,12 +401,12 @@ local ARC="$1"
     check_var PACKAGE_DIR "get_github() should have set PACKAGE_DIR"
     return 0
   fi
-    
+
 
   [ -z "$ARC" ] && ARC="${ARCHIVE}"
   ARC="${PACKAGEROOT}/${ARC}"
   local SRC=$( tar tvf "${ARC}" | head -1 )
-  if [[ "$SRC" =~ [[:space:]]([^/[:space:]]+)[/][[:space:]]*$ ]] 
+  if [[ "$SRC" =~ [[:space:]]([^/[:space:]]+)[/][[:space:]]*$ ]]
   then
     declare -g PACKAGE_DIR="${PACKAGEROOT}/${BASH_REMATCH[1]}"
   else
@@ -428,12 +434,12 @@ local github=N
     OPT="$1"
     shift
     case $OPT in
-	-D) DISTCLEAN=Y
-	    ;;
+        -D) DISTCLEAN=Y
+            ;;
         -F) FORCE=Y
-	    ;;
+            ;;
         -G) github=Y
-	    ;;
+            ;;
         *) echo "ERROR: invalid option $OPT for prepare_package"
     esac
   done
@@ -446,7 +452,7 @@ local github=N
   # Force extractzion if archive newer than package directory
   [ "${PACKAGE_TYPE}" = "archive" -a "${ARCHIVEROOT}/${ARCHIVE}" -nt "${SRC}" ] && FORCE=Y
   [ "${PACKAGE_TYPE}" != "archive" ] && FORCE=N # Never force non-archive
-  
+
   if [ -d "$SRC" ]
   then
     if [ $FORCE = Y ]
@@ -461,7 +467,7 @@ local github=N
     fi
   fi
   if [ "${PACKAGE_TYPE}" = "archive" ]
-  then    
+  then
     echo "Extracting..."
     pushd . >/dev/null
     cd "${PACKAGEROOT}"
@@ -637,7 +643,7 @@ declare -r LOGDIR="${LOGROOT}/${BUILDER}"
 if [ ! -f "${BUILDER_SCRIPT}" ]
 then
   echo "ERROR: no builder (${BUILDER}) available for target ${TARGET}."
-  exit 1   
+  exit 1
 fi
 
 echo "reading builder file ${BUILDER}.sh"
@@ -706,7 +712,7 @@ persist()
   do
     echo "$1" >> "${PERSISTENT_STORE}"
     shift
-  done  
+  done
 }
 
 #-----------------------------------------------------------------------------
@@ -725,7 +731,7 @@ add_persist_vars()
 save_vars()
 {
 local _v _e
-  
+
   purge_persist
   for _v in ${PERSISTENT_VARS[*]}
   do
@@ -765,7 +771,7 @@ build_begin
 
 #--------------------------------------
 if start_phase prepare
-then  
+then
   title2 "Preparing $TARGET"
   purge_persist
   Establish
@@ -775,7 +781,7 @@ fi
 
 #--------------------------------------
 if start_phase prerequisites
-then  
+then
   if isFunction package_prerequisites
   then
     title2 "Installing/preparing prerequisites for $TARGET"
@@ -796,14 +802,14 @@ then
   verbose 1 "restarting build script upon builder request"
   verbose 2  bash -i "${SCRIPT}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
   save_vars
-  exec bash -l -i "${DIR}/${ME}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
+  exec bash -l -i "${BUILD_DIR}/${ME}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
   echo "BUG: This line should never be reached !!!"
   exit 0
 fi
 
 #--------------------------------------
 if start_phase config
-then  
+then
   if isFunction package_config
   then
     title2 "Configuring $TARGET"
@@ -812,10 +818,10 @@ then
     save_vars
   fi
 fi
-   
+
 #--------------------------------------
 if start_phase build
-then  
+then
   title2 "Building $TARGET"
   Establish
   package_build
@@ -823,7 +829,7 @@ then
 fi
 
 # Starting here we need the deployment part
-cd "${DIR}"
+cd "${BUILD_DIR}"
 source ext/deploy.sh
 
 #--------------------------------------
@@ -831,12 +837,12 @@ start_phase saveconfig && deploy saveconfig
 
 #--------------------------------------
 if start_phase install
-then  
+then
   title2 "Preparing $TARGET deployment..."
   Establish
   package_install
   save_vars
-  cd "${DIR}"
+  cd "${BUILD_DIR}"
 fi
 
 #--------------------------------------

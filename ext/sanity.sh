@@ -2,7 +2,7 @@
 
 #set -x
 
-source ${DIR}/gglib/include errmgr checks present
+source ${BUILD_DIR}/gglib/include errmgr checks present
 Establish
 
 # This script does pre-installation sanity checks in an attempt top avoid common problems, especially with time differences
@@ -39,19 +39,19 @@ local _local _remote
   #       to query the time difference. chrony (the NTP server) on TrueNAS
   #       is however configured by default not to allow remote queries,
   #       so we revert to command line tools
-  
+
   # SSH first for lowest delay between commands as connection, login
   #     and command start are expected to be longer than the command
   #     rundown and ssh disconnect after the output of the time
   local _rt=$( "${SSH[@]}" date \"+%d-%m-%Y %H:%M:%S\|%s\")
   local _lt=$( date "+%d-%m-%Y %H:%M:%S|%s" )
-  
+
   local _lts=$( echo "$_lt" | cut -d '|' -f 2 )
         _lt=$( echo "$_lt" | cut -d '|' -f 1 )
 
   local _rts=$( echo "$_rt" | cut -d '|' -f 2 )
         _rt=$( echo "$_rt" | cut -d '|' -f 1 )
-  
+
   local _diff=$((rts-lts))
   local _dir="in advance"
   [ $_diff -lt 0 ] && _dir="late" && _diff=$((-_diff))
@@ -60,7 +60,7 @@ local _local _remote
   [ ${_diff} -gt ${_warn} ] && _status="WARN"
   [ ${_diff} -gt ${_allow} ] && _status="ERROR"
   verbose 1 "  time difference ${_status}: local=${_lt} NAS=${_rt}"
-      
+
   if [ $_diff -eq 0 ]
   then
     verbose 1 "  time between the NAS and local system is perfectly synchronized"
@@ -80,7 +80,7 @@ local _local _remote
   local _local_dist=$( echo "$_local" | grep '^ID=' )
   [[ "${_local_version}" =~ ^VERSION[_]ID[=][\"]?([^\"]+) ]] && _local_version="${BASH_REMATCH[1]}" || true
   [[ "${_local_dist}" =~ ^ID[=][\"]?([^\"]+) ]] && _local_dist="${BASH_REMATCH[1]}" || true
-  
+
   [ -z "${_local_version}" ] && error "local distribution version could not be identified for sanity check" || true
   [ -z "${_local_dist}" ] && error "local distribution could not be identified for sanity check" || true
 
@@ -88,10 +88,10 @@ local _local _remote
   local _remote_dist=$( echo "$_remote" | grep '^ID=' )
   [[ "${_remote_version}" =~ ^VERSION[_]ID[=][\"]?([^\"]+) ]] && _remote_version="${BASH_REMATCH[1]}" || true
   [[ "${_remote_dist}" =~ ^ID[=][\"]?([^\"]+) ]] && _remote_dist="${BASH_REMATCH[1]}" || true
-  
+
   [ -z "${_remote_version}" ] && error "remote distribution version could not be identified for sanity check" || true
   [ -z "${_remote_dist}" ] && error "remote distribution could not be identified for sanity check" || true
-  
+
   [ "${_local_dist}" != "${_remote_dist}" -o "${_local_version}" != "${_remote_version}" ] && \
       warn "the local linux version '${_local_dist} ${_local_version}' should match the remote version '${_remote_dist} ${_remote_version}'" || true
   verbose 1 "  both versions match (${_remote_dist} ${_remote_version})"

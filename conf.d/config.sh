@@ -1,6 +1,7 @@
+#!/usr/bin/env bash
 
 # NAS is the ip address or FQDN of the TrueNAS Scale server
-NAS="nas.example.net"
+declare -r NAS="nas.example.net"
 
 # TRUENAS_DST is the prefix path used for installation of the packages
 #
@@ -10,13 +11,19 @@ NAS="nas.example.net"
 # sidecar tool. Placing external files into this path (including aLL all its subdirectories)
 # may lead to unpredictible behaviors and most probably loss of these files
 # 
-TRUENAS_DST="/mnt/data/admin/opt"
+declare -r TRUENAS_DST="/mnt/data/admin/opt"
+#-> make_readonly_var
+#-> check_readonly_var
 #-> check_absolute_path
 #-> check_equal_vars_W {} LOCAL_DST
 #-> check_path_in_W TRUENAS_DST "/mnt"
 
-DST_USER=admin
-DST_GROUP=admin
+declare -r DST_USER=admin
+#-> make_readonly_var
+#-> check_readonly_var
+declare -r DST_GROUP=admin
+#-> make_readonly_var
+#-> check_readonly_var
 
 # The default build phase executed when build is called without
 # manually spcifying the phase
@@ -35,10 +42,14 @@ TRUENAS_BACKUP=Y
 # If not set, the parent directory of the deployment
 # area is chosen
 TRUENAS_BACKUP_DIR=
+#-> make_readonly_var {} $( dirname "${TRUENAS_DST}" )
+#-> check_readonly_var
 #-> check_absolute_path -o
 
 # Archive name without extension
-TRUENAS_BACKUP_ARCHIVE=$(basename "${TRUENAS_DST}")
+TRUENAS_BACKUP_ARCHIVE=
+#-> make_readonly_var {} $( basename "${TRUENAS_DST}" )
+#-> check_readonly_var
 
 # Backup bersions to keep (each deployment creates a new one)
 TRUENAS_BACKUP_VERSIONS=5

@@ -294,6 +294,10 @@ If all options are enabled, the following course of actions is taken in order:
 
 The process is steered by the following configuration variables in config.sh
 
+#### Special case: "--purge"
+
+--purge is the way deinstallations of packages may be handled, as it clears the complete deployment area before 
+
 ##### DEPLOY_CONFIG_KEEP (Y/N, recommended=Y)
 
 This is the master variable enabling the configuration file handling at all. If set to "N", which is highly discouraged, config files will not be saved and highly susceptible to be overwritten by subsequent deployments

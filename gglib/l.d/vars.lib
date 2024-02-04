@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+#----------------------------------------------------------
+# %1 : variable name
+# %2 : default value if empty
+make_readonly_var()
+{
+local _v
+
+  grep -q -E '^declare -[a-z]*r' < <(declare -p $1) && return 0
+  eval _v=\"\${$1}\"
+  [ -z "${_v}" ] && _v="$2"
+  declare -g -r $1="${_v}"
+}
+
