@@ -41,7 +41,7 @@ lazy_flags()
 #
 #   Each option must have at least a short or long name. If it has both they MUST be
 #   separated by a pipe (|) and the short (one character) option MUST be first
-#   An otion CANNOT have several short or long synonyms. 
+#   An otion CANNOT have several short or long synonyms.
 #
 #   Option names are to be given without dash. On the function call short options
 #   are introduced by a single dash (-) while long are with a double dash (--)
@@ -82,7 +82,7 @@ local DEF
 
   declare -g -a OPT_ARGS=( "$@" )
   declare -g -A OPT_PARSED=()
-  
+
   while [ "${OPT_ARGS[0]:0:1}" = "-" ]
   do
     OPT="${OPT_ARGS[0]}"
@@ -93,7 +93,7 @@ local DEF
     then
      # Long option
      DEF=$( echo ",${DEFS}," | grep -E -o "[,].[|]${OPT:2}([,]|[:=][^,]*[,])" )
-     # If no match, lets try for option without short option	
+     # If no match, lets try for option without short option
      [ -z "${DEF}" ] && DEF=$( echo ",${DEFS}," | grep -E -o "[,]${OPT:2}([,]|[:=][^,]*[,])" )
      [ -z "${DEF}" ] && echo "ERROR: unknown option '$OPT' for function ${fname}" && exit 1
     else

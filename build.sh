@@ -20,24 +20,36 @@ BUILD_ARGS=()   # args of build.sh (i.e. ORIG_CMD_ARGS minus BUILDER_ARGS)
 declare -r ORIG_CMD_ARGS=( "$@" )
 declare -r SCRIPT="$0" # Get calling script
 declare -r ME=$(basename "$SCRIPT")
-BUILD_DIR=$(dirname "$SCRIPT")
-BUILD_DIR="${BUILD_DIR:-.}"
-declare -r BUILD_DIR=$( readlink -e "$BUILD_DIR" )
-[ -z "$BUILD_DIR" ] && echo "error: unexpected empty BUILD_DIR variable." && exit 99
+#<># BUILD_DIR=$(dirname "$SCRIPT")
+BUILD_ROOT=$(dirname "$SCRIPT")
+#<># BUILD_DIR="${BUILD_DIR:-.}"
+BUILD_ROOT="${BUILD_ROOT:-.}"
+#<># declare -r BUILD_DIR=$( readlink -e "$BUILD_DIR" )
+declare -r BUILD_ROOT=$( readlink -e "$BUILD_ROOT" )
+#<># [ -z "$BUILD_DIR" ] && echo "error: unexpected empty BUILD_DIR variable." && exit 99
+[ -z "$BUILD_ROOT" ] && echo "error: unexpected empty BUILD_ROOT variable." && exit 99
 
-cd "$BUILD_DIR" || exit 1
+#<># cd "$BUILD_DIR" || exit 1
+cd "$BUILD_ROOT" || exit 1
 
 source gglib/include errmgr
 Establish
 
-declare -r CONFDIR="${BUILD_DIR}/conf.d"
-declare -r BUILDERDIR="${BUILD_DIR}/builders.d"
-declare -r LOGROOT="${BUILD_DIR}/logs"
-declare -r PACKAGEROOT="${BUILD_DIR}/packages"
-declare -r ARCHIVEROOT="${PACKAGEROOT}"
-declare -r DISTRIBUTEDIR="${BUILD_DIR}/distribute.d"
-declare -r PERSISTENT_STORE_DIR="${BUILD_DIR}/persist.d"
-declare PERSISTENT_VARS=( BUILD_PHASE PERSISTENT_VARS LINK ARCHIVE PACKAGE_TYPE PACKAGE_DIR PREFIX )
+#<># declare -r CONFDIR="${BUILD_DIR}/conf.d"
+declare -r BUILD_CONFIG_DIR="${BUILD_ROOT}/conf.d"
+#<># declare -r BUILDERDIR="${BUILD_DIR}/builders.d"
+declare -r BUILDER_DIR="${BUILD_ROOT}/builders.d"
+#<># declare -r LOGROOT="${BUILD_DIR}/logs"
+declare -r LOG_ROOT="${BUILD_ROOT}/logs"
+#<># declare -r PACKAGEROOT="${BUILD_DIR}/packages"
+declare -r PACKAGE_ROOT="${BUILD_ROOT}/packages"
+#<># declare -r ARCHIVEROOT="${PACKAGEROOT}"
+declare -r ARCHIVE_ROOT="${PACKAGE_ROOT}"
+#<># declare -r DISTRIBUTEDIR="${BUILD_DIR}/distribute.d"
+declare -r DISTRIBUTE_DIR="${BUILD_ROOT}/distribute.d"
+#<># declare -r PERSISTENT_STORE_DIR="${BUILD_DIR}/persist.d"
+declare -r PERSISTENT_STORE_DIR="${BUILD_ROOT}/persist.d"
+declare PERSISTENT_VARS=( BUILD_PHASE PERSISTENT_VARS PACKAGE_DOWNLOAD_LINK PACKAGE_ARCHIVE PACKAGE_TYPE PACKAGE_DIR PREFIX )
 
 declare -r SHELL_ENABLED_OPTS="checkwinsize cmdhist complete_fullquote extquote force_fignore globasciiranges globskipdots hostcomplete interactive_comments patsub_replacement progcomp promptvars sourcepath"
 declare -r SHELL_DISABLED_OPTS="autocd assoc_expand_once cdable_vars cdspell checkhash checkjobs compat31 compat32 compat40 compat41 compat42 compat43 compat44 direxpand dirspell dotglob execfail expand_aliases extdebug extglob failglob globstar gnu_errfmt histappend histreedit histverify huponexit inherit_errexit lastpipe lithist localvar_inherit localvar_unset login_shell mailwarn no_empty_cmd_completion nocaseglob nocasematch noexpand_translation nullglob progcomp_alias restricted_shell shift_verbose varredir_close xpg_echo"
@@ -46,7 +58,8 @@ SHELL_OPTS_STACK=()
 BUILD_NEED_RESTART=N
 
 PACKAGE_DIR=""
-VERBOSE=0
+#<># VERBOSE=0
+VERBOSE_LEVEL=0
 
 declare -r BUILD_PHASE_LIST="prepare,prerequisites,config,build,saveconfig,install,deploy,restoreconfig"
 declare -r FIRST_BUILD_PHASE=${BUILD_PHASE_LIST%%,*}
@@ -57,7 +70,8 @@ BUILD_PHASE=none
 # usage: print out usage information
 #
 # %1 : optional error message
-SYNOPSIS=""
+#<># SYNOPSIS=""
+BUILDER_SYNOPSIS=""
 usage()
 {
   if [ -n "$1" ]
@@ -66,7 +80,8 @@ usage()
     echo "ERROR: $1"
   fi
   echo "" >&2
-  echo "usage: ${ME} [<options>] <package> ${SYNOPSIS}" >&2
+#<>#   echo "usage: ${ME} [<options>] <package> ${SYNOPSIS}" >&2
+  echo "usage: ${ME} [<options>] <package> ${BUILDER_SYNOPSIS}" >&2
   echo "usage: ${ME} [<options>] -a" >&2
   echo "usage: ${ME} -e|--enable|-d|--disable <package>..." >&2
   echo "usage: ${ME} --list" >&2
@@ -105,7 +120,8 @@ isFunction()
 }
 
 # First we get ony the error catcher
-#source ${BUILD_DIR}/gglib/include errmgr
+#<># #source ${BUILD_DIR}/gglib/include errmgr
+#source ${BUILD_ROOT}/gglib/include errmgr
 #Establish
 
 # ...and then all other libraries
@@ -113,22 +129,25 @@ gglib_include all
 
 #-----------------------------------------------------------------------------
 
-#source ${BUILD_DIR}/conf.d/config.sh
+#<># #source ${BUILD_DIR}/conf.d/config.sh
+#source ${BUILD_ROOT}/conf.d/config.sh
 # Load and check config
-source "${BUILD_DIR}/ext/load_config.sh"
+#<># source "${BUILD_DIR}/ext/load_config.sh"
+source "${BUILD_ROOT}/ext/load_config.sh"
 
 # Config variable enforcing
 make_readonly_var TRUENAS_BACKUP_DIR $( dirname "${TRUENAS_DST}" )
 
 
 # Sanity checks
-check_equal_vars_W TRUENAS_DST LOCAL_DST
+check_equal_vars_W TRUENAS_DST STAGING_AREA
 check_path_in_W TRUENAS_DST "/mnt"
 
 DEFAULT_BUILD_PHASE=${DEFAULT_BUILD_PHASE:-build}
 check_value_in DEFAULT_BUILD_PHASE "${BUILD_PHASE_LIST}"
 
-need_directory "${PACKAGEROOT}"
+#<># need_directory "${PACKAGEROOT}"
+need_directory "${PACKAGE_ROOT}"
 need_directory "${PERSISTENT_STORE_DIR}"
 
 # Default build phases
@@ -149,9 +168,11 @@ local BUILDER PKG STATUS
     BUILDER=$( basename "$BUILDER" )
     PKG="${BUILDER#build_}"
     PKG="${PKG%.sh}"
-    [ -x "${BUILDERDIR}/${BUILDER}" ] && STATUS="${TTY_COLOR_GREEN}enabled${TTY_NORMAL}" || STATUS="${TTY_COLOR_RED}disabled${TTY_NORMAL}"
+#<>#     [ -x "${BUILDERDIR}/${BUILDER}" ] && STATUS="${TTY_COLOR_GREEN}enabled${TTY_NORMAL}" || STATUS="${TTY_COLOR_RED}disabled${TTY_NORMAL}"
+    [ -x "${BUILDER_DIR}/${BUILDER}" ] && STATUS="${TTY_COLOR_GREEN}enabled${TTY_NORMAL}" || STATUS="${TTY_COLOR_RED}disabled${TTY_NORMAL}"
     printf "%-16s (%s)\n" "${PKG}" $STATUS
-  done < <( ls "${BUILDERDIR}/build_"*.sh | sort)
+#<>#   done < <( ls "${BUILDERDIR}/build_"*.sh | sort)
+  done < <( ls "${BUILDER_DIR}/build_"*.sh | sort)
   echo ""
 }
 
@@ -192,7 +213,8 @@ parse_opt_build()
 }
 
 #-----------------------------------------------------------------------------
-OPT_ALL=N # Presence of --all
+#<># OPT_ALL=N # Presence of --all
+BUILD_OPT_ALL=N # Presence of --all
 parse_build_cmd()
 {
 local OPT
@@ -213,10 +235,12 @@ local oo=0 # Counts operational options
                    exit 0
                    ;;
         -a|--all)  [ ${BUILD_ALL} = Y ] && continue # Already in build-all mode
-                   OPT_ALL=Y
+#<>#                    OPT_ALL=Y
+                   BUILD_OPT_ALL=Y
                    ;;
         -P|--purge) [ ${BUILD_ALL} = Y ] && continue # was handled by parent
-                    purge_directory "${LOCAL_DST}"
+#<>#                     purge_directory "${LOCAL_DST}"
+                    purge_directory "${STAGING_AREA}"
                     ;;
         -e|--enable|-d|--disable)
                    [ ${oo} -gt 1 ] && usage "enable/disable options cannot be mixed with other operational options" && exit 99
@@ -236,7 +260,8 @@ local oo=0 # Counts operational options
                     BUILD_ARGS+=( "$1" )
                     shift
                     ;;
-        -v) VERBOSE=$((VERBOSE+1))
+#<>#         -v) VERBOSE=$((VERBOSE+1))
+        -v) VERBOSE_LEVEL=$((VERBOSE_LEVEL+1))
             oo=$((oo-1)) # Not  operational
             ;;
         -x|--trace)
@@ -259,7 +284,7 @@ local oo=0 # Counts operational options
 _manage_packages()
 {
 local ARG ENABLE=X
-  
+
   set -- "${CMD_ARGS[@]}"
   while [ -n "$1" ]
   do
@@ -274,7 +299,8 @@ local ARG ENABLE=X
            exit 99
       esac
     else
-      BUILDER="${BUILDERDIR}/build_${ARG}.sh"
+#<>#       BUILDER="${BUILDERDIR}/build_${ARG}.sh"
+      BUILDER="${BUILDER_DIR}/build_${ARG}.sh"
       if [ -f "${BUILDER}" -o -f "${BUILDER}.disabled" ]
       then
         [ $ENABLE = X ] && echo "BUG: unexpected unknown enabler setting" && exit 1
@@ -300,18 +326,24 @@ local BUILDER
   while read -u 3 BUILDER
   do
     BUILDER=$( basename "$BUILDER" )
-    local PACKAGE=""
-    [[ "${BUILDER}" =~ ^build_(.+)[.]sh([.]disabled)?$ ]] && PACKAGE="${BASH_REMATCH[1]}"
+#<>#     local PACKAGE=""
+    local PACKAGE_NAME=""
+#<>#     [[ "${BUILDER}" =~ ^build_(.+)[.]sh([.]disabled)?$ ]] && PACKAGE="${BASH_REMATCH[1]}"
+    [[ "${BUILDER}" =~ ^build_(.+)[.]sh([.]disabled)?$ ]] && PACKAGE_NAME="${BASH_REMATCH[1]}"
     echo ""
     echo "=========================================================================="
     if [ -z "${BASH_REMATCH[2]}" ]
     then
-      echo "building package ${PACKAGE}..."
-      ${SCRIPT} -Z "${BUILD_ARGS[@]}" "${PACKAGE}"
+#<>#       echo "building package ${PACKAGE}..."
+      echo "building package ${PACKAGE_NAME}..."
+#<>#       ${SCRIPT} -Z "${BUILD_ARGS[@]}" "${PACKAGE}"
+      ${SCRIPT} -Z "${BUILD_ARGS[@]}" "${PACKAGE_NAME}"
     else
-      echo "INFO: ${PACKAGE} is disabled." >&2
+#<>#       echo "INFO: ${PACKAGE} is disabled." >&2
+      echo "INFO: ${PACKAGE_NAME} is disabled." >&2
     fi
-  done 3< <( find ${BUILDERDIR} -maxdepth 1 -name "build_*.sh" -o -name "build_*.sh.disabled"| sort )
+#<>#   done 3< <( find ${BUILDERDIR} -maxdepth 1 -name "build_*.sh" -o -name "build_*.sh.disabled"| sort )
+  done 3< <( find ${BUILDER_DIR} -maxdepth 1 -name "build_*.sh" -o -name "build_*.sh.disabled"| sort )
 
   exit 0
 }
@@ -319,25 +351,33 @@ local BUILDER
 #------------------------------------------------------------
 # %1 : Link
 # Output:
-#  LINK=%1 & ARCHIVE=%2 or extracted arhgive name
+#<># #  LINK=%1 & ARCHIVE=%2 or extracted arhgive name
+#  PACKAGE_DOWNLOAD_LINK=%1 & PACKAGE_ARCHIVE=%2 or extracted arhgive name
 #  PACKAGE_DIR : path to package diorectory
 #  PACKAGE_TYPE=github
 get_github()
 {
-  declare -g LINK="$1"
-  declare -g ARCHIVE="${1##*/}"
+#<>#   declare -g LINK="$1"
+  declare -g PACKAGE_DOWNLOAD_LINK="$1"
+#<>#   declare -g ARCHIVE="${1##*/}"
+  declare -g PACKAGE_ARCHIVE="${1##*/}"
   declare -g PACKAGE_TYPE=github
 
-  ARCHIVE="${ARCHIVE%.git}"
-  declare -g PACKAGE_DIR="${PACKAGEROOT}/${ARCHIVE}"
+#<>#   ARCHIVE="${ARCHIVE%.git}"
+  PACKAGE_ARCHIVE="${PACKAGE_ARCHIVE%.git}"
+#<>#   declare -g PACKAGE_DIR="${PACKAGEROOT}/${ARCHIVE}"
+  declare -g PACKAGE_DIR="${PACKAGE_ROOT}/${PACKAGE_ARCHIVE}"
   check_directory -o "${PACKAGE_DIR}"
   if [ -d "${PACKAGE_DIR}" ]
   then
-    echo "  fetching ${ARCHIVE}..."
+#<>#     echo "  fetching ${ARCHIVE}..."
+    echo "  fetching ${PACKAGE_ARCHIVE}..."
     ( cd "${PACKAGE_DIR}" ; git fetch )
   else
-    echo "  cloning ${ARCHIVE}..."
-    ( cd "${PACKAGEROOT}" ; git clone "$1" )
+#<>#     echo "  cloning ${ARCHIVE}..."
+    echo "  cloning ${PACKAGE_ARCHIVE}..."
+#<>#     ( cd "${PACKAGEROOT}" ; git clone "$1" )
+    ( cd "${PACKAGE_ROOT}" ; git clone "$1" )
   fi
 }
 
@@ -346,42 +386,56 @@ get_github()
 # %2 : oprional archive name
 #
 # Output:
-#  LINK=%1 & ARCHIVE=%2 or extracted arhgive name
+#<># #  LINK=%1 & ARCHIVE=%2 or extracted arhgive name
+#  PACKAGE_DOWNLOAD_LINK=%1 & PACKAGE_ARCHIVE=%2 or extracted arhgive name
 # PACKAGE_TYPE=archive
 download_archive()
 {
   local OPTS
   pushd . >/dev/null
-  cd "${PACKAGEROOT}"
+#<>#   cd "${PACKAGEROOT}"
+  cd "${PACKAGE_ROOT}"
   parse_func_options "download_archive" "N=new" "$@"
   set -- "${OPT_ARGS[@]}"
 
-declare -g LINK="$1"
-declare -g ARCHIVE="$2"
+#<># declare -g LINK="$1"
+declare -g PACKAGE_DOWNLOAD_LINK="$1"
+#<># declare -g ARCHIVE="$2"
+declare -g PACKAGE_ARCHIVE="$2"
 declare -g PACKAGE_TYPE=archive
 
-  local LA="${LINK##*/}"
+#<>#   local LA="${LINK##*/}"
+  local LA="${PACKAGE_DOWNLOAD_LINK##*/}"
   LA="${LA%%\?*}"
 
   # Need extract arcive name
-  if [ -z "$ARCHIVE" -o "${ARCHIVE}" = "${LA}" ]
+#<>#   if [ -z "$ARCHIVE" -o "${ARCHIVE}" = "${LA}" ]
+  if [ -z "$PACKAGE_ARCHIVE" -o "${PACKAGE_ARCHIVE}" = "${LA}" ]
   then
-    ARCHIVE="${LA}"
+#<>#     ARCHIVE="${LA}"
+    PACKAGE_ARCHIVE="${LA}"
     OPTS="-N"
   else
-    OPTS="-O ${ARCHIVE}" # cannot use -N
-    [ -f "${ARCHIVE}" ] && popd >/dev/null && return 0 # ...so we simply do not download existing
+#<>#     OPTS="-O ${ARCHIVE}" # cannot use -N
+    OPTS="-O ${PACKAGE_ARCHIVE}" # cannot use -N
+#<>#     [ -f "${ARCHIVE}" ] && popd >/dev/null && return 0 # ...so we simply do not download existing
+    [ -f "${PACKAGE_ARCHIVE}" ] && popd >/dev/null && return 0 # ...so we simply do not download existing
   fi
 
-  [ -z "$ARCHIVE" ] && echo "no archive name in download_archive()" && exit 1
+#<>#   [ -z "$ARCHIVE" ] && echo "no archive name in download_archive()" && exit 1
+  [ -z "$PACKAGE_ARCHIVE" ] && echo "no archive name in download_archive()" && exit 1
 
   # Use uf/then to aboid error trap if archive exists
-  #if [ ! -f ${ARCHIVE} -o "${PARSED_OPTS[new]}" = "Y" ]
+#<>#   #if [ ! -f ${ARCHIVE} -o "${PARSED_OPTS[new]}" = "Y" ]
+  #if [ ! -f ${PACKAGE_ARCHIVE} -o "${BUILD_PARSED_OPTS[new]}" = "Y" ]
   #then
-  echo "Retrieving $ARCHIVE..."
-  wget -c $OPTS $LINK
+#<>#   echo "Retrieving $ARCHIVE..."
+  echo "Retrieving ${PACKAGE_ARCHIVE}..."
+#<>#   wget -c $OPTS $LINK
+  wget -c $OPTS $PACKAGE_DOWNLOAD_LINK
   #else
-  #  echo "Keeping existing $ARCHIVE"
+#<>#   #  echo "Keeping existing $ARCHIVE"
+  #  echo "Keeping existing $PACKAGE_ARCHIVE"
   #fi
   popd >/dev/null
 }
@@ -403,12 +457,15 @@ local ARC="$1"
   fi
 
 
-  [ -z "$ARC" ] && ARC="${ARCHIVE}"
-  ARC="${PACKAGEROOT}/${ARC}"
+#<>#   [ -z "$ARC" ] && ARC="${ARCHIVE}"
+  [ -z "$ARC" ] && ARC="${PACKAGE_ARCHIVE}"
+#<>#   ARC="${PACKAGEROOT}/${ARC}"
+  ARC="${PACKAGE_ROOT}/${ARC}"
   local SRC=$( tar tvf "${ARC}" | head -1 )
   if [[ "$SRC" =~ [[:space:]]([^/[:space:]]+)[/][[:space:]]*$ ]]
   then
-    declare -g PACKAGE_DIR="${PACKAGEROOT}/${BASH_REMATCH[1]}"
+#<>#     declare -g PACKAGE_DIR="${PACKAGEROOT}/${BASH_REMATCH[1]}"
+    declare -g PACKAGE_DIR="${PACKAGE_ROOT}/${BASH_REMATCH[1]}"
   else
     echo "ERROR: archive directory not found" >&2
     exit 1
@@ -425,7 +482,7 @@ local ARC="$1"
 prepare_package()
 {
 local SRC="" OPT
-local DISTCLEAN=N
+local distclean=N
 local FORCE=N
 local github=N
 
@@ -434,7 +491,8 @@ local github=N
     OPT="$1"
     shift
     case $OPT in
-        -D) DISTCLEAN=Y
+#<>#         -D) distclean=Y
+        -D) BUILD_MAKE_DISTCLEAN=Y
             ;;
         -F) FORCE=Y
             ;;
@@ -450,7 +508,8 @@ local github=N
   [ -z "$SRC" ] && echo "ERROR: no PACKAGE_DIR in prepare_package()" && exit 1
 
   # Force extractzion if archive newer than package directory
-  [ "${PACKAGE_TYPE}" = "archive" -a "${ARCHIVEROOT}/${ARCHIVE}" -nt "${SRC}" ] && FORCE=Y
+#<>#   [ "${PACKAGE_TYPE}" = "archive" -a "${ARCHIVEROOT}/${ARCHIVE}" -nt "${SRC}" ] && FORCE=Y
+  [ "${PACKAGE_TYPE}" = "archive" -a "${ARCHIVE_ROOT}/${PACKAGE_ARCHIVE}" -nt "${SRC}" ] && FORCE=Y
   [ "${PACKAGE_TYPE}" != "archive" ] && FORCE=N # Never force non-archive
 
   if [ -d "$SRC" ]
@@ -459,7 +518,8 @@ local github=N
     then
       rm -Rf "$SRC"
     fi
-    if [ -d "$SRC" -a $DISTCLEAN = Y -a $FORCE != Y ]
+#<>#     if [ -d "$SRC" -a $DISTCLEAN = Y -a $FORCE != Y ]
+    if [ -d "$SRC" -a ${distclean} = Y -a $FORCE != Y ]
     then
       echo "Resetting environment..."
       catch_log distclean.log cd "$SRC" ";" [ ! -f Makefile ] "||" make distclean
@@ -470,8 +530,10 @@ local github=N
   then
     echo "Extracting..."
     pushd . >/dev/null
-    cd "${PACKAGEROOT}"
-    tar xf "$ARCHIVE"
+#<>#     cd "${PACKAGEROOT}"
+    cd "${PACKAGE_ROOT}"
+#<>#     tar xf "$ARCHIVE"
+    tar xf "$PACKAGE_ARCHIVE"
     popd >/dev/null
   fi
 }
@@ -549,7 +611,8 @@ build_end()
   echo ""
   echo "${TARGET} build complete"
   echo ""
-  echo "Log files can be found in ${LOGDIR}"
+#<>#   echo "Log files can be found in ${LOGDIR}"
+  echo "Log files can be found in ${LOG_DIR}"
   echo ""
 }
 
@@ -621,7 +684,8 @@ parse_build_cmd # Parse build.sh options command only
 #echo "BUILDER_ARGS=${BUILDER_ARGS}"
 
 # Handle --all
-if [ ${OPT_ALL} = Y ]
+#<># if [ ${OPT_ALL} = Y ]
+if [ ${BUILD_OPT_ALL} = Y ]
 then
   [ -n "${CMD_ARGS[0]}" ] && error "--all option does not allow package name"
   _build_all
@@ -633,12 +697,16 @@ declare -r TARGET="${CMD_ARGS[0]}"
 [ -z "$TARGET" ] && usage "package name missing" && exit 99
 unset 'CMD_ARGS[0]'
 declare -r BUILDER="build_${TARGET}"
-declare -r BUILDER_SCRIPT="${BUILDERDIR}/${BUILDER}.sh"
-declare -r BUILDER_CONFIG="${CONFDIR}/${BUILDER}.conf"
+#<># declare -r BUILDER_SCRIPT="${BUILDERDIR}/${BUILDER}.sh"
+declare -r BUILDER_SCRIPT="${BUILDER_DIR}/${BUILDER}.sh"
+#<># declare -r BUILDER_CONFIG="${CONFDIR}/${BUILDER}.conf"
+declare -r BUILDER_CONFIG="${BUILD_CONFIG_DIR}/${BUILDER}.conf"
 declare -r PERSISTENT_STORE="${PERSISTENT_STORE_DIR}/${BUILDER}.store"
 
-declare -r LOGDIR="${LOGROOT}/${BUILDER}"
-[ ! -d "$LOGDIR" ] && mkdir "$LOGDIR"
+#<># declare -r LOGDIR="${LOGROOT}/${BUILDER}"
+declare -r LOG_DIR="${LOG_ROOT}/${BUILDER}"
+#<># [ ! -d "$LOGDIR" ] && mkdir "$LOGDIR"
+[ ! -d "$LOG_DIR" ] && mkdir "$LOG_DIR"
 
 if [ ! -f "${BUILDER_SCRIPT}" ]
 then
@@ -802,7 +870,8 @@ then
   verbose 1 "restarting build script upon builder request"
   verbose 2  bash -i "${SCRIPT}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
   save_vars
-  exec bash -l -i "${BUILD_DIR}/${ME}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
+#<>#   exec bash -l -i "${BUILD_DIR}/${ME}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
+  exec bash -l -i "${BUILD_ROOT}/${ME}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
   echo "BUG: This line should never be reached !!!"
   exit 0
 fi
@@ -829,7 +898,8 @@ then
 fi
 
 # Starting here we need the deployment part
-cd "${BUILD_DIR}"
+#<># cd "${BUILD_DIR}"
+cd "${BUILD_ROOT}"
 source ext/deploy.sh
 
 #--------------------------------------
@@ -842,7 +912,8 @@ then
   Establish
   package_install
   save_vars
-  cd "${BUILD_DIR}"
+#<>#   cd "${BUILD_DIR}"
+  cd "${BUILD_ROOT}"
 fi
 
 #--------------------------------------

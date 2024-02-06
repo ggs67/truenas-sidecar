@@ -34,12 +34,16 @@ EOF
 #--------------------------------------------------------------
 package_prepare()
 {
-  ARCHIVE="bacula-${VERSION}.tar.gz"
-  LINK="https://sourceforge.net/projects/bacula/files/bacula/${VERSION}/${ARCHIVE}/download"
+#<>#   ARCHIVE="bacula-${VERSION}.tar.gz"
+  PACKAGE_ARCHIVE="bacula-${VERSION}.tar.gz"
+#<>#   LINK="https://sourceforge.net/projects/bacula/files/bacula/${VERSION}/${ARCHIVE}/download"
+  PACKAGE_DOWNLOAD_LINK="https://sourceforge.net/projects/bacula/files/bacula/${VERSION}/${PACKAGE_ARCHIVE}/download"
 
-  echo "Retrieving $ARCHIVE..."
-  download_archive "$LINK" "$ARCHIVE"
-  
+#<>#   echo "Retrieving $ARCHIVE..."
+  echo "Retrieving $PACKAGE_ARCHIVE..."
+#<>#   download_archive "$LINK" "$ARCHIVE"
+  download_archive "$PACKAGE_DOWNLOAD_LINK" "$PACKAGE_ARCHIVE"
+
   prepare_package -D
 }
 
@@ -71,7 +75,7 @@ package_config()
   local CONFIG_OPTS="--enable-bat --with-${BACULA_DBSERVER}" # Only on server
   [ "${BACULA_BUILD}" = "fd" ] && CONFIG_OPTS="--enable-client-only --disable-build-dird --disable-build-stored" && echo "building client only..." && sleep 3
   [ "${BACULA_BUILD}" = "sd" ] && CONFIG_OPTS="--disable-build-dird --enable-build-stored --with-${BACULA_DBSERVER}" && echo "building storage daemon only..." && sleep 3
-  
+
   CFLAGS="-g -Wall"
   auto_configure \
 	--sbindir=${PREFIX}/bin \

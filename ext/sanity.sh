@@ -2,7 +2,8 @@
 
 #set -x
 
-source ${BUILD_DIR}/gglib/include errmgr checks present
+#<># source ${BUILD_DIR}/gglib/include errmgr checks present
+source ${BUILD_ROOT}/gglib/include errmgr checks present
 Establish
 
 # This script does pre-installation sanity checks in an attempt top avoid common problems, especially with time differences
@@ -10,7 +11,8 @@ Establish
 # First lets check for same time zone
 do_sanity_checks()
 {
-local SSH=( "ssh" "root@${NAS}" )
+#<># local SSH=( "ssh" "root@${NAS}" )
+local SSH=( "ssh" "root@${TRUENAS}" )
 local LTZ=$( timedatectl | grep -E -i 'time[[:space:]]*zone[[:space:]]*[:]' ) || true
 local RTZ=$( "${SSH[@]}" timedatectl | grep -E -i 'time[[:space:]]*zone[[:space:]]*[:]' ) || true
 local _status="OK"
@@ -24,10 +26,14 @@ local _local _remote
   check_var RTZ "remote timezone could not be retrieved"
 
   verbose 1 "Checking local and NAS timezone match"
+
   [[ "$LTZ" =~ [:][[:space:]]*([^[:space:]]+) ]] && LTZ="${BASH_REMATCH[1]}" || true
   [[ "$RTZ" =~ [:][[:space:]]*([^[:space:]]+) ]] && RTZ="${BASH_REMATCH[1]}" || true
 
-  [ "$RTZ" != "$LTZ" ] && error "local timezone and NAS MUST be identical, local=${LTZ} NAS=${RTZ}" || true
+#<>#   [ "$RTZ" != "$LTZ" ] && error "local timezone and NAS MUST be identical, local=${LTZ} NAS=${RTZ}" || true
+  [ "$RTZ" != "$LTZ" ] && error "local timezone and NAS MUST be identical, local=${LTZ} TRUENAS=${RTZ}" || true
+
+#<>#   verbose 1 "  timezones match: local=${LTZ} NAS=${RTZ}"
   verbose 1 "  timezones match: local=${LTZ} NAS=${RTZ}"
 
   # 2. CHECK TIME DIFFERENCE
@@ -59,7 +65,8 @@ local _local _remote
   _status=OK
   [ ${_diff} -gt ${_warn} ] && _status="WARN"
   [ ${_diff} -gt ${_allow} ] && _status="ERROR"
-  verbose 1 "  time difference ${_status}: local=${_lt} NAS=${_rt}"
+#<>#   verbose 1 "  time difference ${_status}: local=${_lt} NAS=${_rt}"
+  verbose 1 "  time difference ${_status}: local=${_lt} TRUENAS=${_rt}"
 
   if [ $_diff -eq 0 ]
   then

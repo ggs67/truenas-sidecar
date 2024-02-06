@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
-# NAS is the ip address or FQDN of the TrueNAS Scale server
-declare -r NAS="nas.example.net"
+# TRUENAS is the ip address or FQDN of the TrueNAS Scale server
+#//#^----NAS->TRUENAS
+#<># declare -r NAS="nas.example.net"
+declare -r TRUENAS="nas.example.net"
 
 # TRUENAS_DST is the prefix path used for installation of the packages
 #
@@ -10,18 +12,20 @@ declare -r NAS="nas.example.net"
 # The path specified here should be solely used for installation of packaged via the TrueNAS
 # sidecar tool. Placing external files into this path (including aLL all its subdirectories)
 # may lead to unpredictible behaviors and most probably loss of these files
-# 
+#
 declare -r TRUENAS_DST="/mnt/data/admin/opt"
 #-> make_readonly_var
 #-> check_readonly_var
 #-> check_absolute_path
-#-> check_equal_vars_W {} LOCAL_DST
+#-> check_equal_vars_W {} STAGING_AREA
 #-> check_path_in_W TRUENAS_DST "/mnt"
 
-declare -r DST_USER=admin
+#<># declare -r DST_USER=admin
+declare -r SIDECAR_USER=admin
 #-> make_readonly_var
 #-> check_readonly_var
-declare -r DST_GROUP=admin
+#<># declare -r DST_GROUP=admin
+declare -r SIDECAR_GROUP=admin
 #-> make_readonly_var
 #-> check_readonly_var
 
@@ -32,6 +36,7 @@ DEFAULT_BUILD_PHASE=saveconfig
 #-> check_value_in {} "${BUILD_PHASE_LIST}"
 
 # Enbale Backup of current state of deploymentares on NAS
+#//#                                                  ^^^----NAS->TRUENAS
 # Y = Enable
 # N = Disable
 TRUENAS_BACKUP=Y
@@ -76,6 +81,7 @@ TRUENAS_BACKUP_VERSIONS=5
 # CAUTION: THINK TWICE BEFORE DISABLING
 #
 #          Deployment to the NAS is doen with rsync --delete to allow for removing
+#//#                         ^^^----NAS->TRUENAS
 #          packages by purging the staging area and not building the package
 #          to be removed. On the other hand you may have packages that allow for
 #          config includes, i.e. the main config file including user config files which
@@ -89,11 +95,13 @@ DEPLOY_CONFIG_KEEP=Y
 
 # The following setting instructs the deployment process not to expect any site-specific
 # config files. I.e. files added to the NAS sidecar by the user (this does not impact the
+#//#                                    ^^^----NAS->TRUENAS
 # editing of existing files iunitially installed by the package)
 #
 # CAUTION WHEN ENABLING THIS !!!
 #
 # If a user adds any file to the NAS sidecar which are not present in any installed package
+#//#                             ^^^----NAS->TRUENAS
 # (i.e. not present in the staging area) these files WILL BE DELETED if the following setting is
 # 'Y'
 #
@@ -123,6 +131,7 @@ DEPLOY_CONFIG_TOUCH=Y
 #
 # Dual sync can be used to reduce the overwriting probability of config files. The primary sync
 # copies files on the NAS modified after the file in the staging area to the distribute.d
+#//#                  ^^^----NAS->TRUENAS
 #
 # The secondary (dual) sync then additionally forces syncs of any file existing in the distribute.d
 # directory.
@@ -133,7 +142,8 @@ DEPLOY_CONFIG_DUAL_SYNC=Y
 #-> check_yes_no
 
 # DEPLOY_CONFIG_CLEANUP controls how config files deleted on the NAS but present in the
-# config vault are handled. 
+#//#                                                             ^^^----NAS->TRUENAS
+# config vault are handled.
 DEPLOY_CONFIG_CLEANUP=Y
 
 # List of known config directories
@@ -142,14 +152,18 @@ DEPLOY_CONFIG_DIRS=( "/etc" "/usr/local/etc" )
 #-----------------------------------------------------------------------------
 
 # Source and destination must be same as some builds hardcode installation path information
-# LOCAL_DST is local destination path (i.e. same as DST)
-LOCAL_DST="${TRUENAS_DST}"
+# STAGING_AREA is local destination path (i.e. same as TRUENAS_DST)
+#//#^^^^^^^----LOCAL_DST->STAGING_AREA
+#<># LOCAL_DST="${TRUENAS_DST}"
+STAGING_AREA="${TRUENAS_DST}"
 #-> check_absolute_path
 
-PREFIX="${LOCAL_DST}"
+#<># PREFIX="${LOCAL_DST}"
+PREFIX="${STAGING_AREA}"
 #-> check_absolute_path
 
-LIBDIRS=( /lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64 )
+#<># LIBDIRS=( /lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64 )
+LIB_SEARCH_PATH=( /lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64 )
 #-> check_array check_absolute_path
 BINDIRS=( /bin /usr/bin /usr/local/bin /sbin /usr/sbin )
 #-> check_array check_absolute_path
@@ -161,9 +175,11 @@ DEV_UID=$( id -u )
 DEV_GID=$( id -g )
 
 [ ${DEV_USER} = root -o ${DEV_UID} -eq 0 -o ${DEV_GID} -eq 0 ] && echo "ERROR: this script is not expected to run under root (or other superuser)" && exit 99
-if [ ! -d "${LOCAL_DST}" ]
+#<># if [ ! -d "${LOCAL_DST}" ]
+if [ ! -d "${STAGING_AREA}" ]
 then
-  sudo mkdir -p "${LOCAL_DST}" && sudo chown ${DEV_USER} "${LOCAL_DST}"
+#<>#   sudo mkdir -p "${LOCAL_DST}" && sudo chown ${DEV_USER} "${LOCAL_DST}"
+  sudo mkdir -p "${STAGING_AREA}" && sudo chown ${DEV_USER} "${STAGING_AREA}"
   [ $? -ne 0 ] && exit 99 # Error output expected form commands above
 fi
 true # Make sure status is OK

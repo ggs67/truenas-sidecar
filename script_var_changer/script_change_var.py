@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 import argparse
+import io
 import re
 import sys
+from collections import defaultdict
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import List, AnyStr, Dict, Optional
@@ -85,6 +87,13 @@ parser.add_argument(
     action="store_true",
     help="""enable verbose output (default if -x|--exec is omitted"""
 )
+parser.add_argument(
+    "-V",
+    "--list-vars",
+    action="store_true",
+    help="""list also files per variable, where found (with -l)"""
+)
+
 parser.add_argument(
     "-x",
     "--exec",
@@ -181,7 +190,7 @@ def parseParameters(line, pos):
 #           Default=[[0,1]]
 def _findCommandVars(line: str, command: str, optdefs : Dict[str,int]={}, varargs: List[List[int,int]]=[[0,1]]):
   vars = []
-  rx=f"([$][(]|[|&;])\s*{command}\s" # There my be other characters than trailing space but then the command is not relevant anywway
+  rx=f"([$][(]|[|&;])\s*{command}\s" # There may be other characters than trailing space but then the command is not relevant anywway
 
   # check option types:
   longopts=False
@@ -359,6 +368,59 @@ def _findVars(line, pattern):
 
 
 #----------------------------------------------------------------------------
+# Find context matching variables, where special syntax is used to indicate
+# plate of variables:
+#  %% -> Variable
+#  %<n>% -> na variables
+#  %+% -> 1 or more variables
+#
+# IMPORTANT: No capturing grpups allowed in regex !!!!
+# NOTE: if % needs to be matched, the character group syntax [%] must be used
+#       we do NOT check for escapes
+#
+# command: if true, the regex is assume to be a command, i.e. to be found at beginning of line
+# or after '&' , ';' or '|'
+def _findRegexVars(line, regex: str, command: bool=True):
+  vars=[]
+  def _repl(pos, end, ofs, line, repl):
+    pos+=ofs
+    end+=ofs
+    line = line[:pos]+repl+line[end:]
+    ofs+=end-pos
+    return line, ofs
+
+  # First lets replace the macros in regex (rg. %% ...)
+  macros = [ m for m in re.finditer(r"([%][%]|[%][0-9]+[%]|[%][+][%])", regex)]
+  ofs=0
+  for m in macros:
+    if m.group(1) == "%%":
+      regex,ofs=_repl(m.start(1), m.end(1), ofs, regex,"(" + rxVar + ")")
+    elif m.group(1)=="%+%":
+      regex,ofs=_repl(m.start(1), m.end(1), ofs, regex,f"((?:{rxVar}\\s+)*(?:{rxVar}))")
+    else:
+      n=int(m.group(1)[1:-1])
+      n-=1
+      assert n>0, "BUG: n must be at leat 2 in {n}, for n=1 use {}"
+      regex,ofs=_repl(m.start(1), m.end(1), ofs, regex,f"((?:{rxVar}\\s+){{{n}}}(?:{rxVar}))")
+
+  if command:
+    line=";"+line # make it match begionning of line
+    regex=f"(?:[$][(]|[|&;])\s*{regex}"
+
+  ofs=1 if command else 0 # corrector for added ';'
+  for m in re.finditer(regex, line):
+    if m.lastindex is None: continue
+    for g in range(1, m.lastindex+1):
+      start=m.start(g)-ofs
+      for vm in re.finditer(rxVar,m.group(g)):
+        s = start + vm.start(0)
+        e = s + vm.end(0) - vm.start(0)
+        v=vm.group(0)
+        vars.append(TVar(v,s,e,False,False))
+
+  return vars
+
+#----------------------------------------------------------------------------
 def findVarList(line):
   vlist=[]
 
@@ -375,9 +437,12 @@ def findVarList(line):
   vlist += _findCommandVars(line, "read",
                                  { "a": 1, "d": 1, "i":1, "n":1, "N":1, "p":1, "t":1, "u":1 },
                                  [[0,-1]])
-  # Filter list for duplicates 8f.ex. "local VAR=value" will be found twice
-  #                                    ^^^^^^^^^^^^^^^^.. findDeclareVars
-  #                                          ^^^^---_findVars
+
+  vlist += _findRegexVars(line,"for %% in")
+
+  # Filter list for duplicates f.ex. "local VAR=value" will be found twice
+  #                                   ^^^^^^^^^^^^^^^^.. findDeclareVars
+  #                                         ^^^^---_findVars
   vlist2=[]
   for v in vlist:
     for v2 in vlist2:
@@ -388,7 +453,7 @@ def findVarList(line):
     else:
       vlist2.append(v)
 
-  return vlist2
+  return sorted(vlist2, key=lambda x : x.Start)
 
 #----------------------------------------------------------------------------
 def findVars(line):
@@ -434,7 +499,8 @@ class TLine:
   def __init__(self, script: TScript, lnum: int, line: str, vars : List[str, TVar]=[]):
     self.LineNumber=lnum
     self.Line=line
-    self.Variables : Dict[str, TVar] ={}
+    self.Variables : Dict[str, List[TVar]] ={}
+    self.OmittedVars : Dict[str, List[TVar]] ={}
     self.Script=script
     self.AddVars(vars)
     self.NewLine = None
@@ -443,6 +509,45 @@ class TLine:
 
   def __lt__(self, other:TLine):
     return self.LineNumber < other.LineNumber
+
+  #----------------------------------------------------------------------------
+  def Count(self, var: str):
+    if var not in self.Variables: return 0
+    return len(self.Variables[var])
+
+  #----------------------------------------------------------------------------
+  def CountOmitted(self, var: str):
+    if var not in self.OmittedVars: return 0
+    return len(self.OmittedVars[var])
+
+  #----------------------------------------------------------------------------
+  def GetComments(self, suffix=False):
+    if self.Comments is None: return []
+    return self.Comments[1 if suffix else 0]
+
+  #----------------------------------------------------------------------------
+  def isInfoLine(self):
+    l=self.Line.strip()
+    if l[:len(ModificationComment)] == ModificationComment: return True
+    if l[:len(OmissionComment)] == OmissionComment: return True
+    return False
+
+  #----------------------------------------------------------------------------
+  def Write(self, f: io.TextIOBase):
+    global args
+
+    # We do remove comments previously generated by this tool
+    if self.isInfoLine(): return
+
+    precmt=self.GetComments(False)
+    postcmt=self.GetComments(True)
+    if args.comment > 0:
+      # Add comment with original line above change
+      if self.NewLine is not None: f.write(ModificationComment + " " + self.Line + "\n")
+    f.write(self.GetActiveLine() + '\n')
+    if len(postcmt)  > 0:
+      for LL in postcmt:
+        f.write(LL + '\n')  # These lines have already comment marks
 
   #----------------------------------------------------------------------------
   def hasVariables(self):
@@ -500,6 +605,8 @@ class TLine:
 
   #----------------------------------------------------------------------------
   def CheckOmissions(self, vardefs: TVarList) -> List:
+    if self.isInfoLine(): return [] # ignore comment lines from this tool
+
     line = self.GetActiveLine()  # Use active line (i.e. modified if so)
     found = []
     for vd in vardefs.VarDefDB.values():
@@ -512,8 +619,14 @@ class TLine:
       found = found + f
 
     self.Omissions = None if len(found)==0 else found
-    return found
-
+    if self.Omissions is not None:
+      ov = [ TVar(x[2], x[0], x[1], False, False) for x in self.Omissions ]
+      self.OmittedVars=defaultdict(list)
+      for v in ov:
+        self.OmittedVars[v.Name].append(v)
+      return found
+    else:
+      self.OmittedVars={}
 
   #----------------------------------------------------------------------------
   def _findVar(self, line: str, var: str):
@@ -553,10 +666,51 @@ class TScript:
     self.File=file.absolute()
     self.Lines : List[TLine] = []
     self.Variables : Dict[str, TLine]={}
+    self.OmittedtVars={}
     self._loaded = False # Loaded means that all lines of the script are loade iun the "Lines" array
 
   def __lt__(self, other):
     return str(self.File) < str(other.File)
+
+  #----------------------------------------------------------------------------
+  def Count(self, var: str):
+    if var not in self.Variables: return 0
+    count = 0
+    for line in self.Variables[var]:
+      count+=line.Count(var)
+    return count
+
+  #----------------------------------------------------------------------------
+  def CountOmitted(self, var: str):
+    if var not in self.OmittedtVars: return 0
+    count = 0
+    for line in self.OmittedtVars[var]:
+      count+=line.CountOmitted(var)
+    return count
+
+  #----------------------------------------------------------------------------
+  def _collectOmittedtVars(self):
+    self.OmittedtVars=defaultdict(list)
+    for line in self.Lines:
+      for ovname in line.OmittedVars:
+        self.OmittedtVars[ovname].append(line)
+
+  #----------------------------------------------------------------------------
+  def _openForUpdate(self):
+    backup=Path(str(self.File)+".bak")
+    self.File.rename(backup)
+    return open(self.File ,"w")
+
+  #----------------------------------------------------------------------------
+  def Update(self):
+    print(f"  updating {str(self.File)}...")
+    f=self._openForUpdate()
+
+    for L in self.Lines:
+      L.Write(f)
+
+    f.close()
+
 
   #----------------------------------------------------------------------------
   def _purgeVar(self,v):
@@ -619,8 +773,25 @@ class TScript:
 class TRegistry:
 
   def __init__(self):
-    self.Scripts=[]
+    self.Scripts : List[TScript] = []
     self.Variables={}
+    self.OmittedVars={}
+
+  #----------------------------------------------------------------------------
+  def Count(self, var: str):
+    if var not in self.Variables: return 0
+    count = 0
+    for script in self.Variables[var]:
+      count+=script.Count(var)
+    return count
+
+  #----------------------------------------------------------------------------
+  def CountOmitted(self, var: str):
+    if var not in self.OmittedVars: return 0
+    count = 0
+    for script in self.Variables[var]:
+      count+=script.CountOmitted(var)
+    return count
 
   #----------------------------------------------------------------------------
   def AddScript(self, script: TScript):
@@ -633,6 +804,15 @@ class TRegistry:
     for script in self.Scripts:
       if path == script.File: return script
     return None
+
+  #----------------------------------------------------------------------------
+  def CollectOmittedtVars(self):
+    self.OmittedtVars=defaultdict(list)
+    for script in self.Scripts:
+      script._collectOmittedtVars()
+
+      for v in script.OmittedtVars:
+        self.OmittedtVars[v].append(script)
 
   #----------------------------------------------------------------------------
   def CollectVariables(self):
@@ -840,25 +1020,10 @@ class TVarChanger:
     self._file=None
 
   #----------------------------------------------------------------------------
-  def _writeChanges(self, comments:bool):
+  def _writeChanges(self, script: TScript, comments:bool):
     global args
 
-    backup=Path(str(self._path)+".bak")
-    self._path.rename(backup)
-
-    print(f"  updating {str(self._path)}...")
-    f=open(self._path,"w")
-
-    for L in self._lines:
-      if comments:
-        # Add comment with original line above change
-        if L[1] is not None: f.write(ModificationComment+" "+L[1]+"\n")
-      f.write(L[0]+'\n')
-      if comments and len(L)>2:
-        for LL in L[2:]:
-          f.write(LL+'\n') # These lines have already comment marks
-
-    f.close()
+    script.Update()
 
   def Do(self, exec=False):
     global VERBOSE
@@ -905,12 +1070,14 @@ class TVarChanger:
         for f in found:
           unchanges += 1 # Only counted if comments are enabled
           vs=f[0] ; ve=f[1] ; v=f[2]
+          if self._vardefs.Find(v).NewName is not None:
+            v = v + "->" + self._vardefs.Find(v).NewName
           cmt= (vs*" ")+((ve-vs)*"^")+"----"+v
           cmt="#//#" + cmt[4:] # Need to insert comment even if variable at BOL
           L.AddPostComment(cmt)
 
     if exec:
-      if changes>0 or (unchanges>0 and args.comment): self._writeChanges(args.comment)
+      if changes>0 or (unchanges>0 and args.comment): self._writeChanges(script, args.comment)
 
     script.Unload()
 
@@ -955,7 +1122,7 @@ class TVarChangeManager:
 
   def __init__(self, start : Path, vardefs : List[str], ignoreList: List[AnyStr], exec:bool=False):
     self._start = start.absolute()
-    self._vardefs = TVarList(vardefs)
+    self.Vardefs = TVarList(vardefs)
     self._exec=exec
     self._ignoreList=[]
     self.ModifiedFiles=[]
@@ -976,7 +1143,7 @@ class TVarChangeManager:
 
   #----------------------------------------------------------------------------
   def _ReportWarnings(self):
-    for vd in self._vardefs.VarDefDB.values():
+    for vd in self.Vardefs.VarDefDB.values():
       if vd.NewName in self.Registry.Variables and vd.OriginalName in self.Registry.Variables:
         print("")
         print(f"WARNING: variable '{vd.NewName}' already found for {vd.OriginalName}->{vd.NewName}")
@@ -989,7 +1156,7 @@ class TVarChangeManager:
     # A name collision occurs if any file still contains a variable to be change while
     # its new name als already exists somewhere.
     self.StartCollect()
-    self.Registry.Cleanup(self._vardefs)
+    self.Registry.Cleanup(self.Vardefs)
 
     self.ModifiedFiles=[]
     self._Start(self.MODE_CHANGE)
@@ -1029,7 +1196,7 @@ class TVarChangeManager:
         if fnmatch(fn, n): return
 
     if mode == self.MODE_CHANGE:
-      changer = TVarChanger(self.Registry, file, self._vardefs)
+      changer = TVarChanger(self.Registry, file, self.Vardefs)
       changes,unchanges = changer.Do(self._exec)
       if changes>0 or (unchanges > 0 and args.comment):
         self.ModifiedFiles.append([file, changes, unchanges])
@@ -1113,6 +1280,25 @@ vcm.StartChange()
 if args.list is not None:
   list_file_path=Path(args.list).absolute()
   list_file = open(list_file_path,"w")
+
+  if args.list_vars:
+    vcm.Registry.CollectOmittedtVars()
+    list_file.write("Variable cross-reference\n")
+    list_file.write("========================\n")
+
+    vars = { x for x in list(vcm.Registry.Variables)+list(vcm.Registry.OmittedVars) }
+    for vname in sorted(vars):
+      if vcm.Vardefs.Find(vname) is not None:
+        vscripts = vcm.Registry.Variables[vname] if vname in vcm.Registry.Variables else []
+        if vname in vcm.Registry.OmittedtVars: vscripts += vcm.Registry.OmittedtVars[vname]
+        if len(vscripts)>0:
+          list_file.write("\n")
+          list_file.write(f"{vname}\n")
+          list_file.write((len(vname)*'-')+'\n')
+          for script in sorted(vscripts):
+            list_file.write(f"  {script.Count(vname):^4d} {script.CountOmitted(vname):^4d} {str(script.File)}\n")
+
+  list_file.write("\n")
   list_file.write("changes misses file\n")
   list_file.write("----------------------------------------------------------------------------------------\n")
 

@@ -39,7 +39,7 @@ script_var_changer/script_change_var.py -B -c \
                                         -N setup_path.sh.template \
                                         -N make_config_checker.sh \
                                         -i ./backup.sh -i .git \
-                 -l changed_vars.lis -N "*.store" $OPTS . @vars.lis #"${VARDEFS[@]}"
+                 -l changed_vars.lis -V -N "*.store" $OPTS . @vars.lis #"${VARDEFS[@]}"
 
 echo ""
 cat changed_vars.lis

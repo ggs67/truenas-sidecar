@@ -249,13 +249,13 @@ class TConfigScript:
 
     checker('#!/usr/bin/env bash')
     checker_spacer()
-    checker('CHECKER_DIR=$( dirname "${BASH_SOURCE}" )')
+    checker('CONFIG_CHECKER_DIR=$( dirname "${BASH_SOURCE}" )')
     checker_spacer()
     cmt=""
-    checker(f'{cmt}source ${{CHECKER_DIR}}/{os.path.relpath(self._gglib.absolute(), self._checkerDir.absolute())}/include checks vars')
+    checker(f'{cmt}source ${{CONFIG_CHECKER_DIR}}/{os.path.relpath(self._gglib.absolute(), self._checkerDir.absolute())}/include checks vars')
     checker_spacer()
     cmt="# " if args.nosource else ""
-    checker(f'{cmt}source ${{CHECKER_DIR}}/{os.path.relpath(self._path, self._checkerDir.absolute())}')
+    checker(f'{cmt}source ${{CONFIG_CHECKER_DIR}}/{os.path.relpath(self._path, self._checkerDir.absolute())}')
     checker_spacer()
 
     if asFunc:
