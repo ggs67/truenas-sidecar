@@ -53,7 +53,7 @@ local O
   eval O=\( "\${${VAR}[@]}" \)
   for X in "${O[@]}"
   do
-    N+=( "${LOCAL_DST}${X}" )
+    N+=( "${STAGING_AREA}${X}" )
   done
   eval $VAR=\( "${N[@]}" \)
 }
@@ -63,15 +63,15 @@ source ../conf.d/config.sh
 
 FILE=setup_path.sh
 TEMPLATE=${FILE}.template
-DEST="${LOCAL_DST}/${FILE}"
+DEST="${STAGING_AREA}/${FILE}"
 translate BINDIRS
-translate LIBDIRS
+translate LIB_SEARCH_PATH
 
 sed -e '/^[[:space:]]*###SETUP###[[:space:]]*$/,$d' "${TEMPLATE}" > "$DEST"
 
 echo "setup_path_add_paths PATH ${BINDIRS[@]}" >> "$DEST"
-echo "setup_path_add_paths LD_LIBRARY_PATH ${LIBDIRS[@]}" >> "$DEST"
+echo "setup_path_add_paths LD_LIBRARY_PATH ${LIB_SEARCH_PATH[@]}" >> "$DEST"
 echo ""
 
 sed -n -e '/^[[:space:]]*###SETUP###[[:space:]]*$/,$p' "${TEMPLATE}" | tail +2 >> "$DEST"
-
+chmod 755 "${DEST}"

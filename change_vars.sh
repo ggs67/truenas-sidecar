@@ -5,10 +5,6 @@ ME=$( basename "$0" )
 
 cd "$DIR" || exit 1
 
-VARDEFS=(
-  "DIR->BUILD_DIR"
-  )
-
 OPTS=""
 
 [ "$1" = "do" ] && OPTS="--exec"
@@ -20,7 +16,6 @@ script_var_changer/script_change_var.py -B \
 					-i packages \
 					-i prepare_environment.sh \
 					-i ${ME} \
-					-N make_setup_path.sh \
                                         -N setup_path.sh.template \
                                         -N make_config_checker.sh \
                                         -i ./backup.sh \
@@ -35,7 +30,6 @@ script_var_changer/script_change_var.py -B -c \
 					-i packages \
 					-i prepare_environment.sh \
 					-i ${ME} \
-					-N make_setup_path.sh \
                                         -N setup_path.sh.template \
                                         -N make_config_checker.sh \
                                         -i ./backup.sh -i .git \

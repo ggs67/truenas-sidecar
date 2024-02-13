@@ -140,8 +140,7 @@ warn()
 # %1: level
 # %2...: echo options and/or paramaters
 #
-# issue echo with specified parameters if level <= VERBOSE
-#//#                                               ^^^^^^^----VERBOSE->VERBOSE_LEVEL
+# issue echo with specified parameters if level <= VERBOSE_LEVEL
 #<># declare -g VERBOSE=${VERBOSE:-0}
 declare -g VERBOSE_LEVEL=${VERBOSE_LEVEL:-0}
 verbose()

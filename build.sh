@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 
-[ "${BASH_VERSION:0:2}" != "5." ] && echo "build environment requires bash V5 as a minimum" && exit 99
+[[ ! "${BASH_VERSION:0:2}" =~ ^([0-9])+[.] ]] && echo "unexpected bash version number '${BASH_VERSION:0:2}' in '${BASH_VERSION}'" && exit 99
+[ ${BASH_REMATCH[1]} -lt 5 ] && echo "build environment requires bash V5 as a minimum" && exit 99
 
 #set -x
 
-# If we are a sub process of this script, we assume BUILD_ALL request (i.,e. ignore any --all option)
-# ps --pid $PPID -h -o cmd | fgrep -q "${ME}" 2>/dev/null && declare -r BUILD_ALL=Y || declare -r BUILD_ALL=N
-# Note: - we switched from above automatic to the explicit method below, to distinghuish of other restarts (like for -L)
-#       - also need to parse this here to avoid -Z to be taken into account for any option lists below
+# -z : we got called to build single package from a list of packages (all but th elast package in the lsit will be done like this)
+# -Z : we got called with a list of packages created from --all (in this mode we ignore --all)
+#
+# NOTE: if both are present -z is expected to preceed -Z because they get prepended and -Z issues from --all, where as then -z
+#       get prepended to it by the sub process which handles the package list 
+[ "$1" = "-z" ] && declare -r BUILD_SUB=Y && shift || declare -r BUILD_SUB=N
 [ "$1" = "-Z" ] && declare -r BUILD_ALL=Y && shift || declare -r BUILD_ALL=N
 
 # Allow trapping of command not found
@@ -15,39 +18,28 @@ unset -f command_not_found_handle
 
 declare -r RUN_DIR="$PWD"
 CMD_ARGS=( "$@" )
-BUILDER_ARGS=() # build_xxx.sh <args..>
-BUILD_ARGS=()   # args of build.sh (i.e. ORIG_CMD_ARGS minus BUILDER_ARGS)
+BUILD_PACKAGE_LIST=() # package list from command line
+BUILD_ARGS=()   # args of build.sh (i.e. ORIG_CMD_ARGS minus package list)
 declare -r ORIG_CMD_ARGS=( "$@" )
-declare -r SCRIPT="$0" # Get calling script
-declare -r ME=$(basename "$SCRIPT")
-#<># BUILD_DIR=$(dirname "$SCRIPT")
-BUILD_ROOT=$(dirname "$SCRIPT")
-#<># BUILD_DIR="${BUILD_DIR:-.}"
+declare -r SCRIPT=$( realpath -e "$0" ) # Get called script
+declare -r BUILD_LOG="${SCRIPT}.log"
+declare -r ME=$(basename "${SCRIPT}")
+BUILD_ROOT=$(dirname "${SCRIPT}")
 BUILD_ROOT="${BUILD_ROOT:-.}"
-#<># declare -r BUILD_DIR=$( readlink -e "$BUILD_DIR" )
 declare -r BUILD_ROOT=$( readlink -e "$BUILD_ROOT" )
-#<># [ -z "$BUILD_DIR" ] && echo "error: unexpected empty BUILD_DIR variable." && exit 99
 [ -z "$BUILD_ROOT" ] && echo "error: unexpected empty BUILD_ROOT variable." && exit 99
 
-#<># cd "$BUILD_DIR" || exit 1
 cd "$BUILD_ROOT" || exit 1
 
 source gglib/include errmgr
 Establish
 
-#<># declare -r CONFDIR="${BUILD_DIR}/conf.d"
 declare -r BUILD_CONFIG_DIR="${BUILD_ROOT}/conf.d"
-#<># declare -r BUILDERDIR="${BUILD_DIR}/builders.d"
 declare -r BUILDER_DIR="${BUILD_ROOT}/builders.d"
-#<># declare -r LOGROOT="${BUILD_DIR}/logs"
 declare -r LOG_ROOT="${BUILD_ROOT}/logs"
-#<># declare -r PACKAGEROOT="${BUILD_DIR}/packages"
 declare -r PACKAGE_ROOT="${BUILD_ROOT}/packages"
-#<># declare -r ARCHIVEROOT="${PACKAGEROOT}"
 declare -r ARCHIVE_ROOT="${PACKAGE_ROOT}"
-#<># declare -r DISTRIBUTEDIR="${BUILD_DIR}/distribute.d"
 declare -r DISTRIBUTE_DIR="${BUILD_ROOT}/distribute.d"
-#<># declare -r PERSISTENT_STORE_DIR="${BUILD_DIR}/persist.d"
 declare -r PERSISTENT_STORE_DIR="${BUILD_ROOT}/persist.d"
 declare PERSISTENT_VARS=( BUILD_PHASE PERSISTENT_VARS PACKAGE_DOWNLOAD_LINK PACKAGE_ARCHIVE PACKAGE_TYPE PACKAGE_DIR PREFIX )
 
@@ -58,10 +50,11 @@ SHELL_OPTS_STACK=()
 BUILD_NEED_RESTART=N
 
 PACKAGE_DIR=""
-#<># VERBOSE=0
 VERBOSE_LEVEL=0
 
 declare -r BUILD_PHASE_LIST="prepare,prerequisites,config,build,saveconfig,install,deploy,restoreconfig"
+declare -r BUILD_PHASE_COMMON=deploy # Here the common part starts
+declare -r BUILD_PHASE_LAST_INDIVIDUAL=install
 declare -r FIRST_BUILD_PHASE=${BUILD_PHASE_LIST%%,*}
 declare -r LAST_BUILD_PHASE=${BUILD_PHASE_LIST##*,}
 BUILD_PHASE=none
@@ -70,8 +63,6 @@ BUILD_PHASE=none
 # usage: print out usage information
 #
 # %1 : optional error message
-#<># SYNOPSIS=""
-BUILDER_SYNOPSIS=""
 usage()
 {
   if [ -n "$1" ]
@@ -80,8 +71,7 @@ usage()
     echo "ERROR: $1"
   fi
   echo "" >&2
-#<>#   echo "usage: ${ME} [<options>] <package> ${SYNOPSIS}" >&2
-  echo "usage: ${ME} [<options>] <package> ${BUILDER_SYNOPSIS}" >&2
+  echo "usage: ${ME} [<options>] <package>..." >&2
   echo "usage: ${ME} [<options>] -a" >&2
   echo "usage: ${ME} -e|--enable|-d|--disable <package>..." >&2
   echo "usage: ${ME} --list" >&2
@@ -89,15 +79,15 @@ usage()
   echo "" >&2
   echo "options:" >&2
   echo "  -h|--help : help - display this help" >&2
-  echo "  -a||--all : build all enabled packages (see --list)"
-  echo "  --L|--log : log execution into logfile file ${ME}.log" >&2
+  echo "  -a|--all  : build all enabled packages (see --list)"
+  echo "  -l|--log  : log execution into logfile file ${ME}.log" >&2
+  echo "  -L|--trace: log execution with trace into logfile file ${ME}.log" >&2
   echo "              Implies -x" >&2
-  echo "              This option MUST be FIRST if used" >&2
   echo "  --list    : list all builders with their status" >&2
   echo "  -P|--purge: purge local installation directory" >&2
   echo "  -v        : increases verbosity level (multiple occurences" >&2
   echo "              cumulate" >&2
-  echo "  -x|--trace: switch on bash command print out for debugging" >&2
+  echo "  -x|--debug: switch on bash command print out for debugging" >&2
   echo "  -b|--build <phases>: select explicit build phase(s)" >&2
   echo "     <phases>: <end>         : equal to prepare-<end>" >&2
   echo "             : <start>-      : equal to <start>-install" >&2
@@ -120,7 +110,6 @@ isFunction()
 }
 
 # First we get ony the error catcher
-#<># #source ${BUILD_DIR}/gglib/include errmgr
 #source ${BUILD_ROOT}/gglib/include errmgr
 #Establish
 
@@ -129,10 +118,8 @@ gglib_include all
 
 #-----------------------------------------------------------------------------
 
-#<># #source ${BUILD_DIR}/conf.d/config.sh
 #source ${BUILD_ROOT}/conf.d/config.sh
 # Load and check config
-#<># source "${BUILD_DIR}/ext/load_config.sh"
 source "${BUILD_ROOT}/ext/load_config.sh"
 
 # Config variable enforcing
@@ -146,7 +133,6 @@ check_path_in_W TRUENAS_DST "/mnt"
 DEFAULT_BUILD_PHASE=${DEFAULT_BUILD_PHASE:-build}
 check_value_in DEFAULT_BUILD_PHASE "${BUILD_PHASE_LIST}"
 
-#<># need_directory "${PACKAGEROOT}"
 need_directory "${PACKAGE_ROOT}"
 need_directory "${PERSISTENT_STORE_DIR}"
 
@@ -168,12 +154,24 @@ local BUILDER PKG STATUS
     BUILDER=$( basename "$BUILDER" )
     PKG="${BUILDER#build_}"
     PKG="${PKG%.sh}"
-#<>#     [ -x "${BUILDERDIR}/${BUILDER}" ] && STATUS="${TTY_COLOR_GREEN}enabled${TTY_NORMAL}" || STATUS="${TTY_COLOR_RED}disabled${TTY_NORMAL}"
     [ -x "${BUILDER_DIR}/${BUILDER}" ] && STATUS="${TTY_COLOR_GREEN}enabled${TTY_NORMAL}" || STATUS="${TTY_COLOR_RED}disabled${TTY_NORMAL}"
     printf "%-16s (%s)\n" "${PKG}" $STATUS
-#<>#   done < <( ls "${BUILDERDIR}/build_"*.sh | sort)
   done < <( ls "${BUILDER_DIR}/build_"*.sh | sort)
   echo ""
+}
+
+#-----------------------------------------------------------------------------
+check_not_logged()
+{
+  # We log through FD4 to make it detectable
+  [ ! -e /proc/$$/fd/4 ] && return 0 # FD4 is not open
+  local FD1=$( readlink /proc/$$/fd/1 )
+  local FD2=$( readlink /proc/$$/fd/2 )
+  local FD4=$( readlink /proc/$$/fd/4 )
+  [ "${FD1}" != "${FD4}" ] && return 0
+  [ "${FD2}" != "${FD4}" ] && return 0
+  error "you cannot specify -l and -L multiple times or together"
+  exit 99
 }
 
 #-----------------------------------------------------------------------------
@@ -213,7 +211,6 @@ parse_opt_build()
 }
 
 #-----------------------------------------------------------------------------
-#<># OPT_ALL=N # Presence of --all
 BUILD_OPT_ALL=N # Presence of --all
 parse_build_cmd()
 {
@@ -235,11 +232,9 @@ local oo=0 # Counts operational options
                    exit 0
                    ;;
         -a|--all)  [ ${BUILD_ALL} = Y ] && continue # Already in build-all mode
-#<>#                    OPT_ALL=Y
                    BUILD_OPT_ALL=Y
                    ;;
         -P|--purge) [ ${BUILD_ALL} = Y ] && continue # was handled by parent
-#<>#                     purge_directory "${LOCAL_DST}"
                     purge_directory "${STAGING_AREA}"
                     ;;
         -e|--enable|-d|--disable)
@@ -249,22 +244,29 @@ local oo=0 # Counts operational options
                    _manage_packages
                    exit 0
                    ;;
-        -L|--log)
-                   [ $idx -ne 1 ] && usage "option -L must be first option" && exit 99
+        -l|--log)
                    echo "logging execution..." >&2
+	           check_not_logged
+	           unset BUILD_ARGS[-1] # Do not propagate -l
+		   exec 4> >(tee "${BUILD_LOG}") 1>&4 2>&4
+                   ;;
+        -L|--trace)
+                   echo "logging execution trace..." >&2
+	           check_not_logged
+	           unset BUILD_ARGS[-1] # Do not propagate -L
+		   BUILD_ARGS+=( "-x" ) # But replace by --trace (aka. -x)
                    set -x
-                   /usr/bin/env bash -x ./${ME} "$@" 2>&1 | tee ./${ME}.log
+                   /usr/bin/env bash -x "${SCRIPT}" "${BUILD_ARGS[@]}"  "$@" 4> >( tee "${BUILD_LOG}" ) 1>&4 2>&4
                    exit $?
                    ;;
         -b|--build) parse_opt_build "$1"
                     BUILD_ARGS+=( "$1" )
                     shift
                     ;;
-#<>#         -v) VERBOSE=$((VERBOSE+1))
         -v) VERBOSE_LEVEL=$((VERBOSE_LEVEL+1))
             oo=$((oo-1)) # Not  operational
             ;;
-        -x|--trace)
+        -x|--debug)
             oo=$((oo-1)) # Not  operational
             set -x
             ;;
@@ -277,7 +279,7 @@ local oo=0 # Counts operational options
     esac
   done
   CMD_ARGS=( "$@" )
-  BUILDER_ARGS=( "$@" )
+  BUILD_PACKAGE_LIST=( "$@" )
 }
 
 #------------------------------------------------------------
@@ -299,7 +301,6 @@ local ARG ENABLE=X
            exit 99
       esac
     else
-#<>#       BUILDER="${BUILDERDIR}/build_${ARG}.sh"
       BUILDER="${BUILDER_DIR}/build_${ARG}.sh"
       if [ -f "${BUILDER}" -o -f "${BUILDER}.disabled" ]
       then
@@ -323,60 +324,49 @@ local BUILDER
 
   [ ${BUILD_ALL} = "Y" ] && return # allready in build all mode
 
+  BUILD_PACKAGE_LIST=()
+  
   while read -u 3 BUILDER
   do
     BUILDER=$( basename "$BUILDER" )
-#<>#     local PACKAGE=""
     local PACKAGE_NAME=""
-#<>#     [[ "${BUILDER}" =~ ^build_(.+)[.]sh([.]disabled)?$ ]] && PACKAGE="${BASH_REMATCH[1]}"
     [[ "${BUILDER}" =~ ^build_(.+)[.]sh([.]disabled)?$ ]] && PACKAGE_NAME="${BASH_REMATCH[1]}"
     echo ""
     echo "=========================================================================="
     if [ -z "${BASH_REMATCH[2]}" ]
     then
-#<>#       echo "building package ${PACKAGE}..."
-      echo "building package ${PACKAGE_NAME}..."
-#<>#       ${SCRIPT} -Z "${BUILD_ARGS[@]}" "${PACKAGE}"
-      ${SCRIPT} -Z "${BUILD_ARGS[@]}" "${PACKAGE_NAME}"
+      echo "selecting package ${PACKAGE_NAME}..."
+      BUILD_PACKAGE_LIST+=( ${PACKAGE_NAME} )
     else
-#<>#       echo "INFO: ${PACKAGE} is disabled." >&2
       echo "INFO: ${PACKAGE_NAME} is disabled." >&2
     fi
-#<>#   done 3< <( find ${BUILDERDIR} -maxdepth 1 -name "build_*.sh" -o -name "build_*.sh.disabled"| sort )
   done 3< <( find ${BUILDER_DIR} -maxdepth 1 -name "build_*.sh" -o -name "build_*.sh.disabled"| sort )
 
-  exit 0
+  ${SCRIPT} -Z "${BUILD_ARGS[@]}" "${BUILD_PACKAGE_LIST[@]}"
+  exit $?
 }
 
 #------------------------------------------------------------
 # %1 : Link
 # Output:
-#<># #  LINK=%1 & ARCHIVE=%2 or extracted arhgive name
 #  PACKAGE_DOWNLOAD_LINK=%1 & PACKAGE_ARCHIVE=%2 or extracted arhgive name
 #  PACKAGE_DIR : path to package diorectory
 #  PACKAGE_TYPE=github
 get_github()
 {
-#<>#   declare -g LINK="$1"
   declare -g PACKAGE_DOWNLOAD_LINK="$1"
-#<>#   declare -g ARCHIVE="${1##*/}"
   declare -g PACKAGE_ARCHIVE="${1##*/}"
   declare -g PACKAGE_TYPE=github
 
-#<>#   ARCHIVE="${ARCHIVE%.git}"
   PACKAGE_ARCHIVE="${PACKAGE_ARCHIVE%.git}"
-#<>#   declare -g PACKAGE_DIR="${PACKAGEROOT}/${ARCHIVE}"
   declare -g PACKAGE_DIR="${PACKAGE_ROOT}/${PACKAGE_ARCHIVE}"
   check_directory -o "${PACKAGE_DIR}"
   if [ -d "${PACKAGE_DIR}" ]
   then
-#<>#     echo "  fetching ${ARCHIVE}..."
     echo "  fetching ${PACKAGE_ARCHIVE}..."
     ( cd "${PACKAGE_DIR}" ; git fetch )
   else
-#<>#     echo "  cloning ${ARCHIVE}..."
     echo "  cloning ${PACKAGE_ARCHIVE}..."
-#<>#     ( cd "${PACKAGEROOT}" ; git clone "$1" )
     ( cd "${PACKAGE_ROOT}" ; git clone "$1" )
   fi
 }
@@ -386,55 +376,42 @@ get_github()
 # %2 : oprional archive name
 #
 # Output:
-#<># #  LINK=%1 & ARCHIVE=%2 or extracted arhgive name
 #  PACKAGE_DOWNLOAD_LINK=%1 & PACKAGE_ARCHIVE=%2 or extracted arhgive name
 # PACKAGE_TYPE=archive
 download_archive()
 {
   local OPTS
   pushd . >/dev/null
-#<>#   cd "${PACKAGEROOT}"
   cd "${PACKAGE_ROOT}"
   parse_func_options "download_archive" "N=new" "$@"
-  set -- "${OPT_ARGS[@]}"
+#<>#   set -- "${OPT_ARGS[@]}"
+  set -- "${GGLIB_OPT_ARGS[@]}"
 
-#<># declare -g LINK="$1"
 declare -g PACKAGE_DOWNLOAD_LINK="$1"
-#<># declare -g ARCHIVE="$2"
 declare -g PACKAGE_ARCHIVE="$2"
 declare -g PACKAGE_TYPE=archive
 
-#<>#   local LA="${LINK##*/}"
   local LA="${PACKAGE_DOWNLOAD_LINK##*/}"
   LA="${LA%%\?*}"
 
   # Need extract arcive name
-#<>#   if [ -z "$ARCHIVE" -o "${ARCHIVE}" = "${LA}" ]
   if [ -z "$PACKAGE_ARCHIVE" -o "${PACKAGE_ARCHIVE}" = "${LA}" ]
   then
-#<>#     ARCHIVE="${LA}"
     PACKAGE_ARCHIVE="${LA}"
     OPTS="-N"
   else
-#<>#     OPTS="-O ${ARCHIVE}" # cannot use -N
     OPTS="-O ${PACKAGE_ARCHIVE}" # cannot use -N
-#<>#     [ -f "${ARCHIVE}" ] && popd >/dev/null && return 0 # ...so we simply do not download existing
     [ -f "${PACKAGE_ARCHIVE}" ] && popd >/dev/null && return 0 # ...so we simply do not download existing
   fi
 
-#<>#   [ -z "$ARCHIVE" ] && echo "no archive name in download_archive()" && exit 1
   [ -z "$PACKAGE_ARCHIVE" ] && echo "no archive name in download_archive()" && exit 1
 
   # Use uf/then to aboid error trap if archive exists
-#<>#   #if [ ! -f ${ARCHIVE} -o "${PARSED_OPTS[new]}" = "Y" ]
   #if [ ! -f ${PACKAGE_ARCHIVE} -o "${BUILD_PARSED_OPTS[new]}" = "Y" ]
   #then
-#<>#   echo "Retrieving $ARCHIVE..."
   echo "Retrieving ${PACKAGE_ARCHIVE}..."
-#<>#   wget -c $OPTS $LINK
   wget -c $OPTS $PACKAGE_DOWNLOAD_LINK
   #else
-#<>#   #  echo "Keeping existing $ARCHIVE"
   #  echo "Keeping existing $PACKAGE_ARCHIVE"
   #fi
   popd >/dev/null
@@ -457,14 +434,11 @@ local ARC="$1"
   fi
 
 
-#<>#   [ -z "$ARC" ] && ARC="${ARCHIVE}"
   [ -z "$ARC" ] && ARC="${PACKAGE_ARCHIVE}"
-#<>#   ARC="${PACKAGEROOT}/${ARC}"
   ARC="${PACKAGE_ROOT}/${ARC}"
   local SRC=$( tar tvf "${ARC}" | head -1 )
   if [[ "$SRC" =~ [[:space:]]([^/[:space:]]+)[/][[:space:]]*$ ]]
   then
-#<>#     declare -g PACKAGE_DIR="${PACKAGEROOT}/${BASH_REMATCH[1]}"
     declare -g PACKAGE_DIR="${PACKAGE_ROOT}/${BASH_REMATCH[1]}"
   else
     echo "ERROR: archive directory not found" >&2
@@ -491,7 +465,6 @@ local github=N
     OPT="$1"
     shift
     case $OPT in
-#<>#         -D) distclean=Y
         -D) BUILD_MAKE_DISTCLEAN=Y
             ;;
         -F) FORCE=Y
@@ -508,7 +481,6 @@ local github=N
   [ -z "$SRC" ] && echo "ERROR: no PACKAGE_DIR in prepare_package()" && exit 1
 
   # Force extractzion if archive newer than package directory
-#<>#   [ "${PACKAGE_TYPE}" = "archive" -a "${ARCHIVEROOT}/${ARCHIVE}" -nt "${SRC}" ] && FORCE=Y
   [ "${PACKAGE_TYPE}" = "archive" -a "${ARCHIVE_ROOT}/${PACKAGE_ARCHIVE}" -nt "${SRC}" ] && FORCE=Y
   [ "${PACKAGE_TYPE}" != "archive" ] && FORCE=N # Never force non-archive
 
@@ -518,7 +490,6 @@ local github=N
     then
       rm -Rf "$SRC"
     fi
-#<>#     if [ -d "$SRC" -a $DISTCLEAN = Y -a $FORCE != Y ]
     if [ -d "$SRC" -a ${distclean} = Y -a $FORCE != Y ]
     then
       echo "Resetting environment..."
@@ -530,9 +501,7 @@ local github=N
   then
     echo "Extracting..."
     pushd . >/dev/null
-#<>#     cd "${PACKAGEROOT}"
     cd "${PACKAGE_ROOT}"
-#<>#     tar xf "$ARCHIVE"
     tar xf "$PACKAGE_ARCHIVE"
     popd >/dev/null
   fi
@@ -611,7 +580,6 @@ build_end()
   echo ""
   echo "${TARGET} build complete"
   echo ""
-#<>#   echo "Log files can be found in ${LOGDIR}"
   echo "Log files can be found in ${LOG_DIR}"
   echo ""
 }
@@ -681,31 +649,63 @@ reset_shell_options # Bring script to expected behaviors
 
 parse_build_cmd # Parse build.sh options command only
 #echo "BUILD_ARGS  =${BUILD_ARGS}"
-#echo "BUILDER_ARGS=${BUILDER_ARGS}"
+#echo "BUILD_PACKAGE_LIST=${BUILD_PACKAGE_LIST}"
 
 # Handle --all
-#<># if [ ${OPT_ALL} = Y ]
 if [ ${BUILD_OPT_ALL} = Y ]
 then
-  [ -n "${CMD_ARGS[0]}" ] && error "--all option does not allow package name"
+  [ -n "${BUILD_PACKAGE_LIST[0]}" ] && error "--all option does not allow package name"
   _build_all
   exit $?
 fi
 
+if [ ${#BUILD_PACKAGE_LIST[@]} -gt 1 ]
+then
+  # Multi package build, either on users explicit request or as call back from --all (BUILD_ALL=Y)
+  # We build all but the last one by calling a supprocess. We also limit the build process up to the
+  # last not-common part
 
-declare -r TARGET="${CMD_ARGS[0]}"
+  # Of the 2 words passed returns the one (in specified var) which is earliest in the list
+  # %1 : list
+  # %2 : word1
+  # %3 : word2
+  # %4 : var (for result)
+  # %5 : sep (optional)
+  if list_item_since "${BUILD_PHASE_LIST}" "${BUILD_PHASES[0]}" "${BUILD_PHASE_COMMON}"
+  then
+    # If we start at the common part, we do not have to repeat it for each package
+    printf "Start phase ${BUILD_PHASES[0]} being common to all packages, the following packages are not processed (no need):\n  "
+    while [ ${#BUILD_PACKAGE_LIST[@]} -gt 1 ]
+    do
+      printf "%s" "${BUILD_PACKAGE_LIST[0]}"
+      BUILD_PACKAGE_LIST=( "${BUILD_PACKAGE_LIST[@]:1}" )
+      [ ${#BUILD_PACKAGE_LIST[@]} -gt 1 ] && printf ", "
+    done
+    printf "\n"
+  else    
+    get_earliest_of "${BUILD_PHASE_LIST}" "${BUILD_PHASE_LAST_INDIVIDUAL}" "${BUILD_PHASES[1]}" _build_to
+    # Add --build if we hasve to shorten the run
+    [ "${_build_to}" != "${BUILD_PHASES[1]}" ] && BUILD_ARGS+=( "--build" "${BUILD_PHASES[0]}-${_build_to}" )
+    echo "Package build list: ${BUILD_PACKAGE_LIST[@]} "
+    while [ ${#BUILD_PACKAGE_LIST[@]} -gt 1 ]
+    do
+      PACKAGE="${BUILD_PACKAGE_LIST[0]}"
+      BUILD_PACKAGE_LIST=( "${BUILD_PACKAGE_LIST[@]:1}" )
+      ${SCRIPT} -Z "${BUILD_ARGS[@]}" "${PACKAGE}"
+    done
+  fi
+  # Now we run through to process the last package using the initial phases
+fi
+
+declare -r TARGET="${BUILD_PACKAGE_LIST[0]}"
 [ -z "$TARGET" ] && usage "package name missing" && exit 99
 unset 'CMD_ARGS[0]'
 declare -r BUILDER="build_${TARGET}"
-#<># declare -r BUILDER_SCRIPT="${BUILDERDIR}/${BUILDER}.sh"
 declare -r BUILDER_SCRIPT="${BUILDER_DIR}/${BUILDER}.sh"
-#<># declare -r BUILDER_CONFIG="${CONFDIR}/${BUILDER}.conf"
 declare -r BUILDER_CONFIG="${BUILD_CONFIG_DIR}/${BUILDER}.conf"
 declare -r PERSISTENT_STORE="${PERSISTENT_STORE_DIR}/${BUILDER}.store"
 
-#<># declare -r LOGDIR="${LOGROOT}/${BUILDER}"
 declare -r LOG_DIR="${LOG_ROOT}/${BUILDER}"
-#<># [ ! -d "$LOGDIR" ] && mkdir "$LOGDIR"
 [ ! -d "$LOG_DIR" ] && mkdir "$LOG_DIR"
 
 if [ ! -f "${BUILDER_SCRIPT}" ]
@@ -741,10 +741,14 @@ start_phase()
   delete_option_from_array _args "--build" 1
   delete_option_from_array _args "-b" 1
   _args=( "${_args[@]}" "${BUILDER_ARGS[@]}" )
-  echo ""
-  echo "Build process aborted (by request) before '$1' phase"
-  echo "You may continue the process using '${SCRIPT} --build ${1}- ${_args[@]}'"
-  echo ""
+  # We do not have to show follow-up command for any sub-build
+  if [ ${BUILD_SUB} = N ]
+  then    
+    echo ""
+    echo "Build process aborted (by request) before '$1' phase"
+    echo "You may continue the process using '${SCRIPT} --build ${1}- ${_args[@]}'"
+    echo ""
+  fi
   build_end
   exit 0 # This is not an error
 }
@@ -870,7 +874,6 @@ then
   verbose 1 "restarting build script upon builder request"
   verbose 2  bash -i "${SCRIPT}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
   save_vars
-#<>#   exec bash -l -i "${BUILD_DIR}/${ME}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
   exec bash -l -i "${BUILD_ROOT}/${ME}" --build config-${BUILD_PHASES[1]} "${ARGS[@]}"
   echo "BUG: This line should never be reached !!!"
   exit 0
@@ -898,7 +901,6 @@ then
 fi
 
 # Starting here we need the deployment part
-#<># cd "${BUILD_DIR}"
 cd "${BUILD_ROOT}"
 source ext/deploy.sh
 
@@ -912,7 +914,6 @@ then
   Establish
   package_install
   save_vars
-#<>#   cd "${BUILD_DIR}"
   cd "${BUILD_ROOT}"
 fi
 

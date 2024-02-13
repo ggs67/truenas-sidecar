@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse
 import io
+import os
 import re
 import sys
 from collections import defaultdict
@@ -699,7 +700,10 @@ class TScript:
   def _openForUpdate(self):
     backup=Path(str(self.File)+".bak")
     self.File.rename(backup)
-    return open(self.File ,"w")
+    stat = os.stat(backup)
+    f = open(self.File ,"w")
+    self.File.chmod(stat.st_mode)
+    return f
 
   #----------------------------------------------------------------------------
   def Update(self):
@@ -900,6 +904,8 @@ class TVarList:
     for vd in iter:
       vd=vd.strip()
       if vd=="": continue
+      if vd[0] == "#": continue # Allow commented-out lines
+
       if vd[0]=="@":
         vd=vd[1:].strip()
         p = Path(vd) if path is None else path.absolute().parent.joinpath(vd)
@@ -1289,15 +1295,19 @@ if args.list is not None:
     vars = { x for x in list(vcm.Registry.Variables)+list(vcm.Registry.OmittedVars) }
     for vname in sorted(vars):
       if vcm.Vardefs.Find(vname) is not None:
-        vscripts = vcm.Registry.Variables[vname] if vname in vcm.Registry.Variables else []
-        if vname in vcm.Registry.OmittedtVars: vscripts += vcm.Registry.OmittedtVars[vname]
+        vscripts = list(vcm.Registry.Variables[vname]) if vname in vcm.Registry.Variables else []
+        if vname in vcm.Registry.OmittedtVars: vscripts += list(vcm.Registry.OmittedtVars[vname])
         if len(vscripts)>0:
           list_file.write("\n")
           list_file.write(f"{vname}\n")
           list_file.write((len(vname)*'-')+'\n')
+          vscripts = { x for x in vscripts }
           for script in sorted(vscripts):
             list_file.write(f"  {script.Count(vname):^4d} {script.CountOmitted(vname):^4d} {str(script.File)}\n")
 
+  list_file.write("\n")
+  list_file.write("odified files\n")
+  list_file.write("=============\n")
   list_file.write("\n")
   list_file.write("changes misses file\n")
   list_file.write("----------------------------------------------------------------------------------------\n")

@@ -67,9 +67,9 @@ lazy_flags()
 #
 # OUTPUT:
 #
-# OPT_ARGS[@] : array of the remaining (unparsed) function arguments. I.e. the first non-option argument entcountered
+# GGLIB_OPT_ARGS[@] : array of the remaining (unparsed) function arguments. I.e. the first non-option argument entcountered
 #               or after a '--'
-# OPT_PARSED[@] : Associative array indexed by option iodentifier (as described in part 3 above). Th earray only has entries
+# GGLIB_OPT_PARSED[@] : Associative array indexed by option iodentifier (as described in part 3 above). Th earray only has entries
 #                 for passed options, not for all defined options. For options without parameter, the value is "Y"
 
 parse_func_options()
@@ -80,13 +80,18 @@ shift 2
 local OPT VALUE
 local DEF
 
-  declare -g -a OPT_ARGS=( "$@" )
-  declare -g -A OPT_PARSED=()
+#<>#   declare -g -a OPT_ARGS=( "$@" )
+  declare -g -a GGLIB_OPT_ARGS=( "$@" )
+#<>#   declare -g -A OPT_PARSED=()
+  declare -g -A GGLIB_OPT_PARSED=()
 
-  while [ "${OPT_ARGS[0]:0:1}" = "-" ]
+#<>#   while [ "${OPT_ARGS[0]:0:1}" = "-" ]
+  while [ "${GGLIB_OPT_ARGS[0]:0:1}" = "-" ]
   do
-    OPT="${OPT_ARGS[0]}"
-    OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
+#<>#     OPT="${OPT_ARGS[0]}"
+    OPT="${GGLIB_OPT_ARGS[0]}"
+#<>#     OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
+    GGLIB_OPT_ARGS=( "${GGLIB_OPT_ARGS[@]:1}" ) # shift
 
     [ "$OPT" = "--" ] && break
     if [ "${OPT:1:1}" = "-" ]
@@ -123,9 +128,11 @@ local DEF
       VALUE="Y"
       if [ $COUNT -eq 1 ]
       then
-	VALUE="${OPT_ARGS[0]}"
+#<># 	VALUE="${OPT_ARGS[0]}"
+	VALUE="${GGLIB_OPT_ARGS[0]}"
         [ -z "$VALUE" ] && echo "ERROR: option '$OPT' requires an argument in function ${fname}" >&2 && exit 1
-        OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
+#<>#         OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
+        GGLIB_OPT_ARGS=( "${GGLIB_OPT_ARGS[@]:1}" ) # shift
       fi
       if [ $COUNT -gt 1 ]
       then
@@ -133,15 +140,17 @@ local DEF
 	VALUE=""
 	while [ $C -gt 0 ]
 	do
-          local VAL="${OPT_ARGS[0]}"
+#<>#           local VAL="${OPT_ARGS[0]}"
+          local VAL="${GGLIB_OPT_ARGS[0]}"
           [ -z "$VAL" ] && echo "ERROR: option '$OPT' requires $COUNT arguments in function ${fname}" >&2 && exit 1
 	  [ -n "$VALUE" ] && VALUE="$VALUE$SEP$VAL" || VALUE="$VAL"
-          OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
+#<>#           OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
+          GGLIB_OPT_ARGS=( "${GGLIB_OPT_ARGS[@]:1}" ) # shift
 
 	  C=$((C-1))
 	done
       fi
-      OPT_PARSED[$ID]="$VALUE"
+      GGLIB_OPT_PARSED[$ID]="$VALUE"
     else
       echo "BUG: illegal option definition '${DEF}' in function ${fname}" >&2
       exit 99

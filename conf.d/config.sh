@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 
 # TRUENAS is the ip address or FQDN of the TrueNAS Scale server
-#//#^----NAS->TRUENAS
-#<># declare -r NAS="nas.example.net"
 declare -r TRUENAS="nas.example.net"
 
 # TRUENAS_DST is the prefix path used for installation of the packages
@@ -36,7 +34,6 @@ DEFAULT_BUILD_PHASE=saveconfig
 #-> check_value_in {} "${BUILD_PHASE_LIST}"
 
 # Enbale Backup of current state of deploymentares on NAS
-#//#                                                  ^^^----NAS->TRUENAS
 # Y = Enable
 # N = Disable
 TRUENAS_BACKUP=Y
@@ -81,7 +78,6 @@ TRUENAS_BACKUP_VERSIONS=5
 # CAUTION: THINK TWICE BEFORE DISABLING
 #
 #          Deployment to the NAS is doen with rsync --delete to allow for removing
-#//#                         ^^^----NAS->TRUENAS
 #          packages by purging the staging area and not building the package
 #          to be removed. On the other hand you may have packages that allow for
 #          config includes, i.e. the main config file including user config files which
@@ -95,13 +91,11 @@ DEPLOY_CONFIG_KEEP=Y
 
 # The following setting instructs the deployment process not to expect any site-specific
 # config files. I.e. files added to the NAS sidecar by the user (this does not impact the
-#//#                                    ^^^----NAS->TRUENAS
 # editing of existing files iunitially installed by the package)
 #
 # CAUTION WHEN ENABLING THIS !!!
 #
 # If a user adds any file to the NAS sidecar which are not present in any installed package
-#//#                             ^^^----NAS->TRUENAS
 # (i.e. not present in the staging area) these files WILL BE DELETED if the following setting is
 # 'Y'
 #
@@ -131,7 +125,6 @@ DEPLOY_CONFIG_TOUCH=Y
 #
 # Dual sync can be used to reduce the overwriting probability of config files. The primary sync
 # copies files on the NAS modified after the file in the staging area to the distribute.d
-#//#                  ^^^----NAS->TRUENAS
 #
 # The secondary (dual) sync then additionally forces syncs of any file existing in the distribute.d
 # directory.
@@ -142,7 +135,6 @@ DEPLOY_CONFIG_DUAL_SYNC=Y
 #-> check_yes_no
 
 # DEPLOY_CONFIG_CLEANUP controls how config files deleted on the NAS but present in the
-#//#                                                             ^^^----NAS->TRUENAS
 # config vault are handled.
 DEPLOY_CONFIG_CLEANUP=Y
 
@@ -153,7 +145,6 @@ DEPLOY_CONFIG_DIRS=( "/etc" "/usr/local/etc" )
 
 # Source and destination must be same as some builds hardcode installation path information
 # STAGING_AREA is local destination path (i.e. same as TRUENAS_DST)
-#//#^^^^^^^----LOCAL_DST->STAGING_AREA
 #<># LOCAL_DST="${TRUENAS_DST}"
 STAGING_AREA="${TRUENAS_DST}"
 #-> check_absolute_path

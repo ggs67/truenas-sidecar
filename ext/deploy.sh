@@ -346,22 +346,20 @@ deploy()
       unset -f package_define_commands
       source "$BUILDER"
       OPTS=""
-      [ ! -x "$BUILDER" ] && OPTS="-D" # Pass -D optioon if builder was disabled
-      BUILDER=$( basename "$BUILDER" )
-#<>#       PACKAGE=${BUILDER#build_}
-      PACKAGE_NAME=${BUILDER#build_}
-#<>#       PACKAGE=${PACKAGE%.sh}
+      [ "${BUILDER}" != "${BUILDER%.disabled}" ] && OPTS="-D" # Pass -D option if builder was disabled
+      BUILDER_SCRIPT=$( basename "$BUILDER" )
+      PACKAGE_NAME=${BUILDER_SCRIPT#build_}
+      PACKAGE_NAME=${PACKAGE_NAME%.disabled}
       PACKAGE_NAME=${PACKAGE_NAME%.sh}
       if [ "$( type -t package_define_commands )" = "function" ]
       then
         echo "  - defining additional commands for $BUILDER"
-#<>#         package_define_commands $OPTS | sed -e '1i\\n# Commands for package $PACKAGE' >> "${LOCAL_DST}/setup_path.sh"
         package_define_commands $OPTS | sed -e '1i\\n# Commands for package $PACKAGE_NAME' >> "${STAGING_AREA}/setup_path.sh"
       else
         echo "  - no additional commands for $BUILDER"
       fi
 #<>#     done < <(find "$BUILD_DIR/builders.d" -maxdepth 1 -name "build_*.sh" | sort)
-    done < <(find "$BUILD_ROOT/builders.d" -maxdepth 1 -name "build_*.sh" | sort)
+    done < <(find "$BUILD_ROOT/builders.d" -maxdepth 1 -name "build_*.sh*" | sort)
 
     [ -z "${TRUENAS_DST}" ] && echo "DANGEROUS ERROR - TRUENAS_DST is empty. Aborting..." && exit 1
     [ -z "${SRC}" ] && echo "DANGEROUS ERROR - SRC is empty. Aborting..." && exit 1
