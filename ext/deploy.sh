@@ -341,25 +341,25 @@ deploy()
     ${BUILD_ROOT}/ext/make_setup_path.sh
 
     title "Checking for additional package commands"
-    while read BUILDER
+    while read builder
     do
       unset -f package_define_commands
-      source "$BUILDER"
+      source "${builder}"
       OPTS=""
-      [ "${BUILDER}" != "${BUILDER%.disabled}" ] && OPTS="-D" # Pass -D option if builder was disabled
-      BUILDER_SCRIPT=$( basename "$BUILDER" )
-      PACKAGE_NAME=${BUILDER_SCRIPT#build_}
-      PACKAGE_NAME=${PACKAGE_NAME%.disabled}
-      PACKAGE_NAME=${PACKAGE_NAME%.sh}
+      [ "${builder}" != "${builder%.disabled}" ] && OPTS="-D" # Pass -D option if builder was disabled
+      builder_script=$( basename "${builder}" )
+      package_name=${builder_script#build_}
+      package_name=${package_name%.disabled}
+      package_name=${package_name%.sh}
       if [ "$( type -t package_define_commands )" = "function" ]
       then
-        echo "  - defining additional commands for $BUILDER"
-        package_define_commands $OPTS | sed -e '1i\\n# Commands for package $PACKAGE_NAME' >> "${STAGING_AREA}/setup_path.sh"
+        echo "  - defining additional commands for ${package_name}"
+        package_define_commands $OPTS | sed -e "1i\\# Commands for package ${package_name}" >> "${STAGING_AREA}/setup_path.sh"
+	unset -f package_define_commands
       else
-        echo "  - no additional commands for $BUILDER"
+        echo "  - no additional commands for ${package_name}"
       fi
-#<>#     done < <(find "$BUILD_DIR/builders.d" -maxdepth 1 -name "build_*.sh" | sort)
-    done < <(find "$BUILD_ROOT/builders.d" -maxdepth 1 -name "build_*.sh*" | sort)
+    done < <(find "$BUILD_ROOT/builders.d" -maxdepth 1 -name "build_*.sh" -o -name "build_*.sh.disabled" | sort)
 
     [ -z "${TRUENAS_DST}" ] && echo "DANGEROUS ERROR - TRUENAS_DST is empty. Aborting..." && exit 1
     [ -z "${SRC}" ] && echo "DANGEROUS ERROR - SRC is empty. Aborting..." && exit 1
