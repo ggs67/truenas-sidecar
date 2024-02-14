@@ -19,14 +19,10 @@ EOF
 #--------------------------------------------------------------
 package_prepare()
 {
-#<>#   declare -g ARCHIVE="Python-${VERSION}.tgz"
   declare -g PACKAGE_ARCHIVE="Python-${VERSION}.tgz"
-#<>#   LINK="https://www.python.org/ftp/python/${VERSION}/${ARCHIVE}"
   PACKAGE_DOWNLOAD_LINK="https://www.python.org/ftp/python/${VERSION}/${PACKAGE_ARCHIVE}"
 
-#<>#   echo "Retrieving $ARCHIVE..."
   echo "Retrieving $PACKAGE_ARCHIVE..."
-#<>#   download_archive "$LINK"
   download_archive "$PACKAGE_DOWNLOAD_LINK"
 
   prepare_package -D

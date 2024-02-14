@@ -19,14 +19,10 @@ EOF
 #--------------------------------------------------------------
 package_prepare()
 {
-#<>#   ARCHIVE="emacs-${VERSION}.tar.gz"
   PACKAGE_ARCHIVE="emacs-${VERSION}.tar.gz"
-#<>#   LINK="https://ftp.gnu.org/gnu/emacs/${ARCHIVE}"
   PACKAGE_DOWNLOAD_LINK="https://ftp.gnu.org/gnu/emacs/${PACKAGE_ARCHIVE}"
 
-#<>#   echo "Retrieving $ARCHIVE..."
   echo "Retrieving $PACKAGE_ARCHIVE..."
-#<>#   download_archive "$LINK"
   download_archive "$PACKAGE_DOWNLOAD_LINK"
 
   prepare_package -D

@@ -384,7 +384,6 @@ download_archive()
   pushd . >/dev/null
   cd "${PACKAGE_ROOT}"
   parse_func_options "download_archive" "N=new" "$@"
-#<>#   set -- "${OPT_ARGS[@]}"
   set -- "${GGLIB_OPT_ARGS[@]}"
 
 declare -g PACKAGE_DOWNLOAD_LINK="$1"

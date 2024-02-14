@@ -5,7 +5,6 @@ gglib_include tty
 #-----------------------------------------------------------------------------
 # %1 : status code
 # %2 : line number
-#<># CATCH_LOGFILE=
 GGLIB_CATCH_LOGFILE=
 
 # %1 logfile
@@ -16,20 +15,16 @@ catch_log()
 
   [ "$1" = "-d" ] && _debug=Y && shift
 
-#<>#   CATCH_LOGFILE="${LOGDIR}/$1"
   GGLIB_CATCH_LOGFILE="${LOG_DIR}/$1"
   shift
   if [ ${_debug} = N ]
   then
-#<>#     ( eval "$@" > "${CATCH_LOGFILE}" 2>&1 ) || return $?
     ( eval "$@" > "${GGLIB_CATCH_LOGFILE}" 2>&1 ) || return $?
   else
-#<>#     ( eval "$@" 2>&1 ) | tee "${CATCH_LOGFILE}"
     ( eval "$@" 2>&1 ) | tee "${GGLIB_CATCH_LOGFILE}"
     local _status=${PIPESTATUS[0]}
     [ ${_status} -ne 0 ] && return ${_status}
   fi
-#<>#   CATCH_LOGFILE=""
   GGLIB_CATCH_LOGFILE=""
 }
 
@@ -38,9 +33,7 @@ _gglib_catch_error()
 {
   set +x
   local STATUS=$1
-#<>#   [ "${CATCH_CAUGHT}" = "Y" ] && return 0 # already handeled
   [ "${GGLIB_CATCH_CAUGHT}" = "Y" ] && return 0 # already handeled
-#<>#   CATCH_CAUGHT=Y
   GGLIB_CATCH_CAUGHT=Y
 
   caller
@@ -62,10 +55,8 @@ _gglib_catch_error()
   local L1=$((L-5))
   local L2=$((L+2))
 
-#<>#   if [ -n "${CATCH_LOGFILE}" -a -f "${CATCH_LOGFILE}" ]
   if [ -n "${GGLIB_CATCH_LOGFILE}" -a -f "${GGLIB_CATCH_LOGFILE}" ]
   then
-#<>#     tail -50 "${CATCH_LOGFILE}"
     tail -50 "${GGLIB_CATCH_LOGFILE}"
     echo ""
   fi
@@ -96,7 +87,6 @@ _gglib_catch_error()
 #-----------------------------------------------------------------------------
 Establish()
 {
-#<>#   [ -n "${CATCH_CAUGHT}" ] && CATCH_CAUGHT=""
   [ -n "${GGLIB_CATCH_CAUGHT}" ] && GGLIB_CATCH_CAUGHT=""
   trap '_gglib_catch_error $? $LINENO' ERR
 }
@@ -126,12 +116,10 @@ error()
 #          n<0 : wait for -n seconds, can be forced to continue with RETURN
 #          0   : wait for RETURN
 #          any non digit character : do not wait
-#<># WARNING_WAIT=-5
 GGLIB_WARNING_WAIT=-5
 warn()
 {
   local _wait="${2}"
-#<>#   [ -z "$_wait" ] && _wait="${WARNING_WAIT}"
   [ -z "$_wait" ] && _wait="${GGLIB_WARNING_WAIT}"
   echo "WARNING: $1" >&2
   wait_for_abort ${_wait}
@@ -141,11 +129,9 @@ warn()
 # %2...: echo options and/or paramaters
 #
 # issue echo with specified parameters if level <= VERBOSE_LEVEL
-#<># declare -g VERBOSE=${VERBOSE:-0}
 declare -g VERBOSE_LEVEL=${VERBOSE_LEVEL:-0}
 verbose()
 {
-#<>#   [ $1 -gt $VERBOSE ] && return 0
   [ $1 -gt $VERBOSE_LEVEL ] && return 0
   shift
   echo "$@"

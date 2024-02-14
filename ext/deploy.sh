@@ -4,13 +4,10 @@
 
 #set -x
 
-#<># source ${BUILD_DIR}/gglib/include errmgr
 source ${BUILD_ROOT}/gglib/include errmgr
 Establish
 
-#<># cd "$BUILD_DIR" || exit 99
 cd "$BUILD_ROOT" || exit 99
-#<># #source ${BUILD_DIR}/ext/load_config.sh || exit 99
 #source ${BUILD_ROOT}/ext/load_config.sh || exit 99
 
 gglib_include present checks files
@@ -51,7 +48,6 @@ define_command()
     [ -z "$CMDPATH" ] && return 0
     [ $FOUND -gt 1 ] && echo "ERROR: more than one match found for command ${CMD}" %% exit 1
   else
-#<>#     CMDPATH=$( cd "${LOCAL_DST}" ; realpath -m "${CMD}" )
     CMDPATH=$( cd "${STAGING_AREA}" ; realpath -m "${CMD}" )
   fi
   [ ! -f "${CMDPATH}" ] && return 0
@@ -95,7 +91,6 @@ root_lib()
 local ROOT
 local L
 
-#<>#   for ROOT in "${LIBDIRS[@]}"
   for ROOT in "${LIB_SEARCH_PATH[@]}"
   do
     ROOT="${ROOT%/}/" # Make sure it ends with / to avoid partial matches
@@ -177,7 +172,6 @@ usage()
 }
 
 #SAVE_CONFIG_MODE=N
-#<># #VERBOSE=0
 #VERBOSE_LEVEL=0
 #
 #while [ "${1:0:1}" = "-" ]
@@ -191,7 +185,6 @@ usage()
 #      -s|--save-config)
 #           SAVE_CONFIG_MODE=Y
 #           ;;
-#<># #      -v) VERBOSE=$((VERBOSE+1))
 #      -v) VERBOSE_LEVEL=$((VERBOSE_LEVEL+1))
 #   ;;
 #      *) echo "error: unknown option $OPT"
@@ -204,12 +197,9 @@ usage()
 deploy()
 {
   local MODE=$1
-#<>#   local SRC="${LOCAL_DST}"
   local SRC="${STAGING_AREA}"
-#<>#   local URI="root@$NAS"
   local URI="root@$TRUENAS"
 
-#<>#   local VAULT="${BUILD_DIR}/config_vault.d"
   local VAULT="${BUILD_ROOT}/config_vault.d"
 
   local SEP=":"
@@ -294,7 +284,6 @@ deploy()
     do
       FOUND=N
       local LD
-#<>#       for LD in "${LIBDIRS[@]}"
       for LD in "${LIB_SEARCH_PATH[@]}"
       do
         [ ! -d "$LD" ] && continue
@@ -302,7 +291,6 @@ deploy()
         if [ -n "$P" ]
         then
           # Check for remote path
-#<>#           local RP=$( ssh $URI for LD in "${LIBDIRS[@]}" \; do [ -d "\$LD" ] \&\& find -L "\$LD" -name "${LIB}" -type f 2>/dev/null \; done | head -1 )
           local RP=$( ssh $URI for LD in "${LIB_SEARCH_PATH[@]}" \; do [ -d "\$LD" ] \&\& find -L "\$LD" -name "${LIB}" -type f 2>/dev/null \; done | head -1 )
           LIBSP+=( "${LD}${SEP}${LIB}${SEP}${P}${SEP}${RP}" )
           FOUND=Y
@@ -337,7 +325,6 @@ deploy()
 
     title "Making setup_path.sh"
     heading1 "generate new setup_path.sh..."
-#<>#     ${BUILD_DIR}/ext/make_setup_path.sh
     ${BUILD_ROOT}/ext/make_setup_path.sh
 
     title "Checking for additional package commands"
@@ -374,18 +361,13 @@ deploy()
       check_var TRUENAS_BACKUP_VERSIONS
       heading1 "versioning previous backups..."
       ssh ${URI} $( remote_file_version ${TRUENAS_BACKUP_VERSIONS} "${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2" )
-#<>#       BACKUP_PATH="${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2"
       SIDECAR_BACKUP_PATH="${TRUENAS_BACKUP_DIR}/${TRUENAS_BACKUP_ARCHIVE}.tar.bz2"
-#<>#       heading1 "creating new backup ${BACKUP_PATH}"
       heading1 "creating new backup ${SIDECAR_BACKUP_PATH}"
-#<>#       ssh ${URI} tar cfj "${BACKUP_PATH}" "${TRUENAS_DST}/"
       ssh ${URI} tar cfj "${SIDECAR_BACKUP_PATH}" "${TRUENAS_DST}/"
     fi
 
-#<>#     title "Deployment to ${NAS}"
     title "Deployment to ${TRUENAS}"
     echo "syncing NAS..."
-#<>#     rsync -avzh -e ssh --chown ${DST_USER}:${DST_GROUP} --delete "${SRC}/" "${URI}:${TRUENAS_DST}"
     rsync -avzh -e ssh --chown ${SIDECAR_USER}:${SIDECAR_GROUP} --delete "${SRC}/" "${URI}:${TRUENAS_DST}"
   fi
 
@@ -393,7 +375,6 @@ deploy()
   then
     [ "${DEPLOY_CONFIG_KEEP}" != "Y" ] && return 0
     title "Rstoring config files"
-#<>#     rsync -avzh -e ssh --chown ${DST_USER}:${DST_GROUP} --progress "${VAULT}/" "${URI}:${TRUENAS_DST}"
     rsync -avzh -e ssh --chown ${SIDECAR_USER}:${SIDECAR_GROUP} --progress "${VAULT}/" "${URI}:${TRUENAS_DST}"
   fi
 }

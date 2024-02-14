@@ -80,17 +80,12 @@ shift 2
 local OPT VALUE
 local DEF
 
-#<>#   declare -g -a OPT_ARGS=( "$@" )
   declare -g -a GGLIB_OPT_ARGS=( "$@" )
-#<>#   declare -g -A OPT_PARSED=()
   declare -g -A GGLIB_OPT_PARSED=()
 
-#<>#   while [ "${OPT_ARGS[0]:0:1}" = "-" ]
   while [ "${GGLIB_OPT_ARGS[0]:0:1}" = "-" ]
   do
-#<>#     OPT="${OPT_ARGS[0]}"
     OPT="${GGLIB_OPT_ARGS[0]}"
-#<>#     OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
     GGLIB_OPT_ARGS=( "${GGLIB_OPT_ARGS[@]:1}" ) # shift
 
     [ "$OPT" = "--" ] && break
@@ -128,10 +123,8 @@ local DEF
       VALUE="Y"
       if [ $COUNT -eq 1 ]
       then
-#<># 	VALUE="${OPT_ARGS[0]}"
 	VALUE="${GGLIB_OPT_ARGS[0]}"
         [ -z "$VALUE" ] && echo "ERROR: option '$OPT' requires an argument in function ${fname}" >&2 && exit 1
-#<>#         OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
         GGLIB_OPT_ARGS=( "${GGLIB_OPT_ARGS[@]:1}" ) # shift
       fi
       if [ $COUNT -gt 1 ]
@@ -140,11 +133,9 @@ local DEF
 	VALUE=""
 	while [ $C -gt 0 ]
 	do
-#<>#           local VAL="${OPT_ARGS[0]}"
           local VAL="${GGLIB_OPT_ARGS[0]}"
           [ -z "$VAL" ] && echo "ERROR: option '$OPT' requires $COUNT arguments in function ${fname}" >&2 && exit 1
 	  [ -n "$VALUE" ] && VALUE="$VALUE$SEP$VAL" || VALUE="$VAL"
-#<>#           OPT_ARGS=( "${OPT_ARGS[@]:1}" ) # shift
           GGLIB_OPT_ARGS=( "${GGLIB_OPT_ARGS[@]:1}" ) # shift
 
 	  C=$((C-1))

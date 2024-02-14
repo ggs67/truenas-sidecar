@@ -34,14 +34,10 @@ EOF
 #--------------------------------------------------------------
 package_prepare()
 {
-#<>#   ARCHIVE="bacula-${VERSION}.tar.gz"
   PACKAGE_ARCHIVE="bacula-${VERSION}.tar.gz"
-#<>#   LINK="https://sourceforge.net/projects/bacula/files/bacula/${VERSION}/${ARCHIVE}/download"
   PACKAGE_DOWNLOAD_LINK="https://sourceforge.net/projects/bacula/files/bacula/${VERSION}/${PACKAGE_ARCHIVE}/download"
 
-#<>#   echo "Retrieving $ARCHIVE..."
-  echo "Retrieving $PACKAGE_ARCHIVE..."
-#<>#   download_archive "$LINK" "$ARCHIVE"
+  echo "Retrieving ${PACKAGE_ARCHIVE}..."
   download_archive "$PACKAGE_DOWNLOAD_LINK" "$PACKAGE_ARCHIVE"
 
   prepare_package -D
