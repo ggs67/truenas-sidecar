@@ -77,10 +77,16 @@ check_command()
   fi
 }
 
-sudo sudo apt install -y build-essential gdb lcov pkg-config git wget curl rsync command-not-found chrony python3 devscripts
+sudo apt update
+sudo apt install -y build-essential gdb lcov pkg-config git wget curl rsync command-not-found chrony python3 devscripts
+sudo apt install -y systemd-container mmdebstrap
 
 [ $OPTIONAL = Y ] && sudo apt install -y emacs
-[ $OPTIONAL = Y ] && apt update # update database for command-not-found
+sudo apt update # update database for command-not-found
+
+systemctl is-enabled --quiet systemd-networkd || sudo systemctl enable systemd-networkd
+systemctl is-active --quiet systemd-networkd || { sudo systemctl start systemd-networkd ; sleep 5 ; }
+systemctl is-active --quiet systemd-networkd || { echo "ERROR: unable to start systemd-networkd" ; exit 1 ; }
 
 command_not_found_handle()
 {
